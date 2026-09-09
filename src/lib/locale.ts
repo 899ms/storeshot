@@ -2,6 +2,69 @@ import type { LocalizedText } from "./types";
 
 export const DEFAULT_LOCALE = "en";
 
+export const LOCALE_FLAGS: Record<string, string> = {
+  en: "🇺🇸",
+  es: "🇪🇸",
+  "ar-SA": "🇸🇦",
+  ca: "🇪🇸",
+  cs: "🇨🇿",
+  da: "🇩🇰",
+  "de-DE": "🇩🇪",
+  el: "🇬🇷",
+  "en-AU": "🇦🇺",
+  "en-CA": "🇨🇦",
+  "en-GB": "🇬🇧",
+  "en-US": "🇺🇸",
+  "es-ES": "🇪🇸",
+  "es-MX": "🇲🇽",
+  fi: "🇫🇮",
+  "fr-CA": "🇨🇦",
+  "fr-FR": "🇫🇷",
+  he: "🇮🇱",
+  hi: "🇮🇳",
+  hr: "🇭🇷",
+  hu: "🇭🇺",
+  id: "🇮🇩",
+  it: "🇮🇹",
+  ja: "🇯🇵",
+  ko: "🇰🇷",
+  ms: "🇲🇾",
+  "nl-NL": "🇳🇱",
+  no: "🇳🇴",
+  pl: "🇵🇱",
+  "pt-BR": "🇧🇷",
+  "pt-PT": "🇵🇹",
+  ro: "🇷🇴",
+  ru: "🇷🇺",
+  sk: "🇸🇰",
+  sv: "🇸🇪",
+  th: "🇹🇭",
+  tr: "🇹🇷",
+  uk: "🇺🇦",
+  vi: "🇻🇳",
+  "zh-Hans": "🇨🇳",
+  "zh-Hant": "🇹🇼",
+};
+
+function regionalIndicator(code: string): string {
+  return String.fromCodePoint(
+    ...code
+      .toUpperCase()
+      .split("")
+      .map((c) => 127397 + c.charCodeAt(0)),
+  );
+}
+
+// Flag emoji for a locale code. Falls back to the trailing region subtag
+// (e.g. "pt-PT" → 🇵🇹); returns "" when no region can be determined.
+export function getLocaleFlag(locale: string): string {
+  const direct = LOCALE_FLAGS[locale];
+  if (direct) return direct;
+  const region = locale.split("-").pop() || "";
+  if (/^[A-Za-z]{2}$/.test(region)) return regionalIndicator(region);
+  return "";
+}
+
 export const LOCALE_NAMES: Record<string, string> = {
   en: "English (Default)",
   es: "Spanish (Default)",

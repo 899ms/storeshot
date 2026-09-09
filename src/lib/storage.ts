@@ -85,19 +85,23 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
     typeof parsed.themeId === "string" && parsed.themeId.trim()
       ? parsed.themeId
       : DEFAULT_PROJECT.themeId;
-  // iPhone-only: drop any legacy non-iPhone decks (android, ipad, …)
-  // instead of carrying them forward.
-  const parsedIphoneSlides = (parsed.slidesByDevice as Record<string, unknown> | undefined)?.iphone;
-  const slidesByDevice: Record<string, Slide[]> = Array.isArray(parsedIphoneSlides)
-    ? { iphone: (parsedIphoneSlides as Slide[]).map((slide) => migrateSlide(slide)) }
-    : {};
+  // Supported decks only — drop legacy decks for retired devices
+  // (android, android-7, …) instead of carrying them forward.
+  const parsedDecks = parsed.slidesByDevice as Record<string, unknown> | undefined;
+  const slidesByDevice: Record<string, Slide[]> = {};
+  for (const device of ["iphone", "ipad"] as const) {
+    const slides = parsedDecks?.[device];
+    if (Array.isArray(slides)) {
+      slidesByDevice[device] = (slides as Slide[]).map((slide) => migrateSlide(slide));
+    }
+  }
   const merged: ProjectState = {
     ...DEFAULT_PROJECT,
     ...parsed,
     schemaVersion: PROJECT_SCHEMA_VERSION,
     themeId,
     connectedCanvas,
-    device: "iphone",
+    device: parsed.device === "ipad" || parsed.device === "iphone" ? parsed.device : "iphone",
     orientation: "portrait",
     slidesByDevice: {
       ...DEFAULT_PROJECT.slidesByDevice,
@@ -105,11 +109,14 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
     } as ProjectState["slidesByDevice"],
   };
   // Drop legacy per-device extras (e.g. crossScreenMockupsByDevice for
-  // android/ipad) so stale non-iPhone data can't re-enter via file cache.
+  // retired devices) so stale data can't re-enter via file cache.
   const extra = merged as unknown as Record<string, unknown>;
   if (extra.crossScreenMockupsByDevice && typeof extra.crossScreenMockupsByDevice === "object") {
     const cs = extra.crossScreenMockupsByDevice as Record<string, unknown>;
-    extra.crossScreenMockupsByDevice = { iphone: Array.isArray(cs.iphone) ? cs.iphone : [] };
+    extra.crossScreenMockupsByDevice = {
+      iphone: Array.isArray(cs.iphone) ? cs.iphone : [],
+      ipad: Array.isArray(cs.ipad) ? cs.ipad : [],
+    };
   }
   // Clamp the active locale into the project's locale list so a stale
   // `locale` (e.g. from a project that dropped languages) doesn't show blank.

@@ -4,6 +4,7 @@ import JSZip from "jszip";
 import { toPng } from "html-to-image";
 import { Toaster, toast } from "sonner";
 import {
+  DEVICE_LABEL,
   getExportSizes,
   hasTheme,
   supportsLandscape,
@@ -22,6 +23,7 @@ import type {
   SelectedElement,
   Slide,
 } from "@/lib/types";
+import { ExportProgressIndicator } from "./export-progress";
 import { Inspector } from "./inspector";
 import { PreviewStage } from "./preview-stage";
 import { Sidebar } from "./sidebar";
@@ -84,9 +86,12 @@ export function ScreenshotEditor() {
   const assetPaths = React.useMemo(() => {
     const paths = new Set<string>();
     if (state.appIcon) paths.add(state.appIcon);
-    // Preload every locale variant so bulk export doesn't race image loads.
-    const allSlides: Slide[] = Object.values(state.slidesByDevice).flat();
-    for (const s of allSlides) {
+    // Preload locale variants for the current device only. Preloading every
+    // device's slides fetched URLs that may not exist (e.g. empty iPad asset
+    // folders) and spammed the console with 404s for locales/devices the user
+    // never selected.
+    const deviceSlides: Slide[] = state.slidesByDevice[state.device] || [];
+    for (const s of deviceSlides) {
       for (const raw of [s.screenshot, s.screenshotSecondary]) {
         if (!raw || raw.startsWith("data:")) continue;
         if (raw.includes("{locale}")) {
@@ -97,7 +102,7 @@ export function ScreenshotEditor() {
       }
     }
     return Array.from(paths).sort();
-  }, [state.slidesByDevice, state.appIcon, state.locales]);
+  }, [state.slidesByDevice, state.appIcon, state.locales, state.device]);
   const assetSig = assetPaths.join("|");
 
   React.useEffect(() => {
@@ -408,11 +413,25 @@ export function ScreenshotEditor() {
       return;
     }
 
-    stopExportRef.current = false;
-    await preloadImages(assetPaths, { retryFailed: true });
-    await waitForPaint();
-
     const selectedSlides = targetSlideIndices.map((i) => currentSlides[i]);
+
+    stopExportRef.current = false;
+    // Preload only the selected slides × selected locales so unselected
+    // assets (e.g. missing iPad files) are never fetched during export.
+    const exportPaths: string[] = [];
+    if (state.appIcon) exportPaths.push(state.appIcon);
+    for (const s of selectedSlides) {
+      for (const raw of [s.screenshot, s.screenshotSecondary]) {
+        if (!raw || raw.startsWith("data:")) continue;
+        if (raw.includes("{locale}")) {
+          for (const loc of locales) exportPaths.push(resolveScreenshot(raw, loc));
+        } else {
+          exportPaths.push(raw);
+        }
+      }
+    }
+    await preloadImages(exportPaths, { retryFailed: true });
+    await waitForPaint();
     const missingScreens = selectedSlides.filter(
       (s) => slideNeedsScreenshot(state.device, s) && !s.screenshot,
     );
@@ -559,7 +578,15 @@ export function ScreenshotEditor() {
     setExportSlideIndex(idx);
     setExportLocaleOverride(state.locale);
 
-    await preloadImages(assetPaths, { retryFailed: true });
+    const singlePaths: string[] = [];
+    if (state.appIcon) singlePaths.push(state.appIcon);
+    for (const raw of [activeSlide.screenshot, activeSlide.screenshotSecondary]) {
+      if (!raw || raw.startsWith("data:")) continue;
+      singlePaths.push(
+        raw.includes("{locale}") ? resolveScreenshot(raw, state.locale) : raw,
+      );
+    }
+    await preloadImages(singlePaths, { retryFailed: true });
     await waitForPaint();
 
     if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
@@ -699,12 +726,12 @@ export function ScreenshotEditor() {
         onResetAll={() => {
           reset();
           setActiveSlideId(null);
-          toast.success("Reset iPhone screens to defaults");
+          toast.success(`Reset ${DEVICE_LABEL[state.device] ?? "iPhone"} screens to defaults`);
         }}
         onResetDevice={() => {
           resetDevice(state.device);
           setActiveSlideId(null);
-          toast.success("Reset iPhone screens to defaults");
+          toast.success(`Reset ${DEVICE_LABEL[state.device] ?? "iPhone"} screens to defaults`);
         }}
         exporting={exporting}
         savedAt={savedAt}
@@ -720,7 +747,6 @@ export function ScreenshotEditor() {
         locales={state.locales}
         currentLocale={state.locale}
         onStartExport={exportWithConfig}
-        onQuickExportActive={exportActiveSlide}
         exporting={exporting}
       />
 
@@ -847,6 +873,10 @@ export function ScreenshotEditor() {
           </div>
         )}
       </div>
+
+      {exporting && (
+        <ExportProgressIndicator progress={exporting} />
+      )}
     </div>
   );
 }

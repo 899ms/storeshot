@@ -13,10 +13,10 @@ bun dev       # http://localhost:3000
 
 - **Connected canvas editor** (`src/components/editor/`) — every screen sits on one horizontal canvas, so phones, captions, and other elements can be dragged across screen boundaries and exported as split crops when Connected mode is enabled.
 - **Screen controls** — drag-to-reorder screens, click-to-edit text, screenshot drop targets, per-screen layout switcher, dark/light toggle.
-- **Device frame** (`src/components/editor/device-frames.tsx`) — iPhone vector frame with Dynamic Island and titanium chassis.
+- **Device frames** (`src/components/editor/device-frames.tsx`) — iPhone 6.9" vector frame (Dynamic Island, titanium chassis) and iPad 13" vector frame, both with exact screen aspects so screenshots show fully.
 - **Auto-save (git-trackable)** — every change is persisted within ~600ms to **`app-store-screenshots.json`** at the project root (via `/api/project`) **and** mirrored to `localStorage` as an instant-paint cache. Commit `app-store-screenshots.json` and you can `git clone` to another machine and resume exactly where you left off.
-- **iPhone-only deck** — the editor targets iPhone App Store screenshots exclusively (`device: "iphone"`, portrait).
-- **One-click export** — bulk PNG export at any required iPhone App Store resolution using `html-to-image`; each PNG is rendered from the current connected or isolated deck mode.
+- **Device decks** — iPhone 6.9" and iPad 13" slide decks live side by side; the toolbar device switcher flips between them and preserves both.
+- **One-click export** — bulk PNG export at iPhone 6.9" (1320 × 2868) or iPad 13" (2064 × 2752) using `html-to-image`; each PNG is rendered from the current connected or isolated deck mode.
 - **Project migration** — older `app-store-screenshots.json` files are migrated on load. Existing per-slide transforms remain valid, and connected crops become available without rewriting the deck by hand.
 - **Legacy-safe mode** — pre-v2 projects opened directly in the editor start in isolated-screen mode first, then can opt into connected crops with the toolbar's Connected/Isolated control. Skill-run in-place migrations keep legacy decks isolated unless the project had already explicitly opted into connected canvas.
 

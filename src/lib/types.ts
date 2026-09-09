@@ -1,4 +1,4 @@
-export type Device = "iphone";
+export type Device = "iphone" | "ipad";
 
 export type Orientation = "portrait";
 

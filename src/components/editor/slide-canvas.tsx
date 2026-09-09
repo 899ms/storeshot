@@ -15,14 +15,17 @@ import type {
 } from "@/lib/types";
 import {
   CANVAS,
+  IPAD_MK_RATIO,
   MK_RATIO,
   phoneW,
   phoneWSmall,
+  tabletW,
+  tabletWSmall,
 } from "@/lib/constants";
 import { toTextElementId } from "@/lib/elements";
 import { img } from "@/lib/image-cache";
 import { pickText, resolveScreenshot } from "@/lib/locale";
-import { Phone } from "./device-frames";
+import { IPad, Phone } from "./device-frames";
 
 type FrameComp = React.ComponentType<{
   src: string;
@@ -31,21 +34,22 @@ type FrameComp = React.ComponentType<{
   hideEmpty?: boolean;
 }>;
 
-export function getCanvas(_device?: Device, _orientation?: Orientation) {
-  const c = CANVAS.iphone;
+export function getCanvas(device?: Device, _orientation?: Orientation) {
+  const c = CANVAS[device ?? "iphone"] ?? CANVAS.iphone;
   return { cW: c.w, cH: c.h };
 }
 
 // Aspect ratio (w/h) of each device frame — must match device-frames.tsx
-function getFrameAspect(_device?: Device, _orientation?: Orientation) {
-  return MK_RATIO;
+function getFrameAspect(device?: Device, _orientation?: Orientation) {
+  return device === "ipad" ? IPAD_MK_RATIO : MK_RATIO;
 }
 
-export function getFrameForDevice(_device?: Device, _orientation?: Orientation): {
+export function getFrameForDevice(device?: Device, _orientation?: Orientation): {
   Comp: FrameComp;
   widthFn: (cW: number, cH: number) => number;
   smallWidthFn: (cW: number, cH: number) => number;
 } {
+  if (device === "ipad") return { Comp: IPad, widthFn: tabletW, smallWidthFn: tabletWSmall };
   return { Comp: Phone, widthFn: phoneW, smallWidthFn: phoneWSmall };
 }
 

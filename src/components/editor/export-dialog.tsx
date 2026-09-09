@@ -35,7 +35,7 @@ import {
   ExportTarget,
   FolderPreset,
 } from "@/lib/export-options";
-import { getLocaleLabel } from "@/lib/locale";
+import { getLocaleFlag, getLocaleLabel } from "@/lib/locale";
 import type { Slide } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +47,6 @@ type Props = {
   locales: string[];
   currentLocale: string;
   onStartExport: (config: ExportConfig) => void;
-  onQuickExportActive: () => void;
   exporting: string | null;
 };
 
@@ -59,7 +58,6 @@ export function ExportDialog({
   locales,
   currentLocale,
   onStartExport,
-  onQuickExportActive,
   exporting,
 }: Props) {
   // Default selected targets: all targets marked defaultSelected
@@ -130,6 +128,8 @@ export function ExportDialog({
 
   const selectAllSlides = () => setSelectedSlideIds(slides.map((s) => s.id));
 
+  const deselectAllSlides = () => setSelectedSlideIds([]);
+
   // Calculations & stats
   const selectedTargets = EXPORT_TARGETS.filter((t) => selectedTargetIds.includes(t.id));
   const totalScreenshots =
@@ -159,7 +159,7 @@ export function ExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col max-h-[85vh] h-[85vh] max-w-3xl overflow-hidden p-0 gap-0 sm:max-w-3xl">
+      <DialogContent className="flex flex-col max-h-[60vh] h-[60vh] max-w-3xl overflow-hidden p-0 gap-0 sm:max-w-3xl">
         {/* Header with Top CTA */}
         <DialogHeader className="shrink-0 border-b px-6 py-3.5 bg-card/80">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pr-8">
@@ -177,19 +177,6 @@ export function ExportDialog({
               </div>
             </div>
 
-            {/* Prominent Header Action Button */}
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={isExportDisabled}
-                onClick={handleExport}
-                className="h-9 px-4 text-xs font-semibold gap-2 shadow-md bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <Download className="h-4 w-4" />
-                <span>Export Bundle ({totalScreenshots} PNG{totalScreenshots === 1 ? "" : "s"})</span>
-              </Button>
-            </div>
           </div>
 
           {/* Quick Summary Pill Bar */}
@@ -305,29 +292,47 @@ export function ExportDialog({
                 <Layers className="h-4 w-4 text-muted-foreground" />
                 <span>2. Screens to Include ({selectedSlideIds.length}/{slides.length})</span>
               </div>
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto p-0 text-[11px]"
-                onClick={selectAllSlides}
-              >
-                Select all
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-[11px]"
+                  onClick={selectAllSlides}
+                >
+                  Select all
+                </Button>
+                <span className="text-[11px] text-muted-foreground">•</span>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-[11px] text-muted-foreground"
+                  onClick={deselectAllSlides}
+                >
+                  Deselect all
+                </Button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6 pt-1">
               {slides.map((slide, idx) => {
                 const isChecked = selectedSlideIds.includes(slide.id);
                 const isMissing = slide.layout !== "no-device" && !slide.screenshot;
                 return (
-                  <Button
+                  <div
                     key={slide.id}
-                    type="button"
-                    variant="outline"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => toggleSlide(slide.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleSlide(slide.id);
+                      }
+                    }}
                     aria-pressed={isChecked}
                     className={cn(
-                      "h-auto flex-col items-start gap-1 p-2 text-left transition-all",
+                      "flex h-auto cursor-pointer flex-col items-start gap-1 rounded-md border p-2 text-left text-sm transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isChecked
                         ? "border-primary/60 bg-primary/5 shadow-xs"
                         : "opacity-60 hover:opacity-100",
@@ -337,10 +342,9 @@ export function ExportDialog({
                       <span className="text-[10px] font-bold text-muted-foreground">
                         #{idx + 1}
                       </span>
-                      <Checkbox
-                        checked={isChecked}
-                        onCheckedChange={() => toggleSlide(slide.id)}
-                      />
+                      <span className="pointer-events-none">
+                        <Checkbox checked={isChecked} tabIndex={-1} />
+                      </span>
                     </div>
                     <span className="truncate text-xs font-medium capitalize">
                       {slide.layout.replace("-", " ")}
@@ -350,7 +354,7 @@ export function ExportDialog({
                         <AlertTriangle className="h-2.5 w-2.5" /> No screenshot
                       </span>
                     )}
-                  </Button>
+                  </div>
                 );
               })}
             </div>
@@ -401,7 +405,7 @@ export function ExportDialog({
                       aria-pressed={isChecked}
                     >
                       {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
-                      {getLocaleLabel(loc)}
+                      {getLocaleFlag(loc)} {getLocaleLabel(loc)}
                       <span className="font-mono text-[10px] uppercase opacity-80">
                         ({loc})
                       </span>
@@ -487,24 +491,7 @@ export function ExportDialog({
         </div>
 
         {/* Fixed Footer with Actions */}
-        <DialogFooter className="shrink-0 flex flex-col gap-2 border-t bg-card/80 px-6 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onOpenChange(false);
-                onQuickExportActive();
-              }}
-              className="h-8 text-xs gap-1.5"
-              title="Download currently selected screen as a single PNG"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Quick Export Current Screen
-            </Button>
-          </div>
-
+        <DialogFooter className="shrink-0 flex flex-col gap-2 border-t bg-card/80 px-6 py-2.5 sm:flex-row sm:items-center sm:justify-end">
           <div className="flex items-center gap-2">
             <Button
               type="button"

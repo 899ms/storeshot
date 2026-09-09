@@ -3,6 +3,7 @@ import type { Device, Orientation, SlideLayout, Theme, ThemeId } from "./types";
 // ---------- Canvas dimensions (design at largest required resolution) ----------
 export const CANVAS: Record<Device, { w: number; h: number }> = {
   iphone: { w: 1320, h: 2868 },
+  ipad: { w: 2064, h: 2752 },
 };
 
 // ---------- Export sizes per device ----------
@@ -10,6 +11,7 @@ export type ExportSize = { label: string; w: number; h: number };
 
 export const EXPORT_SIZES: Record<Device, ExportSize[]> = {
   iphone: [{ label: '6.9" (1320 × 2868)', w: 1320, h: 2868 }],
+  ipad: [{ label: '13" (2064 × 2752)', w: 2064, h: 2752 }],
 };
 
 export function supportsLandscape(_device?: Device): boolean {
@@ -27,12 +29,23 @@ export function getExportSizes(device: Device = "iphone", _orientation?: Orienta
 // inner screen slot exactly 6.9" aspect so screenshots show fully.
 export const MK_RATIO = 425 / 900;
 
+// Outer frame ratio, incl. bezel. Backed out of the 13" iPad screen aspect
+// (2064/2752) and the bezel insets of IPad in device-frames.tsx (94.8% wide,
+// 96.0% tall): 0.75 / (0.948/0.96) ≈ 0.7595. Inner slot is exactly 13" aspect.
+export const IPAD_MK_RATIO = 0.7595;
+
 // ---------- Width formula helpers ----------
 export function phoneW(cW: number, cH: number, clamp = 0.84) {
   return Math.min(clamp, 0.72 * (cH / cW) * MK_RATIO);
 }
 export function phoneWSmall(cW: number, cH: number) {
   return phoneW(cW, cH, 0.66);
+}
+export function tabletW(cW: number, cH: number, clamp = 0.8) {
+  return Math.min(clamp, 0.72 * (cH / cW) * IPAD_MK_RATIO);
+}
+export function tabletWSmall(cW: number, cH: number) {
+  return tabletW(cW, cH, 0.62);
 }
 
 // ---------- Themes ----------
@@ -114,6 +127,7 @@ export const PROJECT_SCHEMA_VERSION = 2;
 
 export const DEVICE_LABEL: Record<Device, string> = {
   iphone: "iPhone",
+  ipad: "iPad",
 };
 
 // Friendly labels for slide layouts (used in dropdowns)

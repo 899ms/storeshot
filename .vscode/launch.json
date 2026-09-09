@@ -2,18 +2,32 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug",
-      "type": "chrome",
+      "name": "Next.js: dev (bun)",
+      "type": "node",
       "request": "launch",
-      "url": "http://localhost:3000",
-      "webRoot": "${workspaceFolder}"
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "console": "integratedTerminal",
+      "restart": true,
+      "serverReadyAction": {
+        "pattern": "Ready in|Local:.*http://localhost:3000",
+        "uriFormat": "http://localhost:3000",
+        "action": "openExternally"
+      }
     },
     {
-      "name": "Chrome",
-      "type": "chrome",
-      "request": "attach",
-      "port": 9222,
-      "webRoot": "${workspaceFolder}"
-    },
+      "name": "Next.js: dev (npm)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "console": "integratedTerminal",
+      "restart": true,
+      "serverReadyAction": {
+        "pattern": "Ready in|Local:.*http://localhost:3000",
+        "uriFormat": "http://localhost:3000",
+        "action": "openExternally"
+      }
+    }
   ]
 }

@@ -1,7 +1,6 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, Check, Cloud, Download, RotateCcw, Smartphone, Square, UnfoldHorizontal } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, Check, Cloud, Download, RotateCcw, Smartphone, Square, Tablet, UnfoldHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,8 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getLocaleLabel } from "@/lib/locale";
+import { DEVICE_LABEL } from "@/lib/constants";
+import { getLocaleFlag, getLocaleLabel } from "@/lib/locale";
 import type { Device, Orientation } from "@/lib/types";
+import { ThemeToggle } from "./theme-toggle";
 
 type Props = {
   appName: string;
@@ -47,6 +48,7 @@ type Props = {
 export function Toolbar(props: Props) {
   const [resetOpen, setResetOpen] = React.useState(false);
   const showLocale = props.locales.length > 1;
+  const deviceLabel = DEVICE_LABEL[props.device] ?? "iPhone";
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b bg-card/40 px-4 py-2">
@@ -82,22 +84,43 @@ export function Toolbar(props: Props) {
 
       <Separator orientation="vertical" className="mx-1 h-5" />
 
-      <Badge variant="secondary" className="h-8 gap-1.5 px-2.5 text-xs font-medium" title="iPhone (App Store Screenshots)">
-        <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
-        iPhone
-      </Badge>
+      {props.setDevice ? (
+        <Select
+          value={props.device}
+          onValueChange={(v) => props.setDevice?.(v as Device)}
+          disabled={props.busy}
+        >
+          <SelectTrigger className="h-8 w-36 text-xs" aria-label="Device">
+            <SelectValue placeholder="Device" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="iphone">
+              <span className="flex items-center gap-1.5">
+                <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
+                iPhone 6.9&Prime;
+              </span>
+            </SelectItem>
+            <SelectItem value="ipad">
+              <span className="flex items-center gap-1.5">
+                <Tablet className="h-3.5 w-3.5 text-muted-foreground" />
+                iPad 13&Prime;
+              </span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      ) : null}
 
       {showLocale && (
         <Select value={props.locale} onValueChange={props.setLocale} disabled={props.busy}>
-          <SelectTrigger className="h-8 w-44 text-xs">
+          <SelectTrigger className="h-8 w-44 text-xs" aria-label="Language">
             <SelectValue placeholder="Language">
-              {getLocaleLabel(props.locale)}
+              {getLocaleFlag(props.locale)} {getLocaleLabel(props.locale)}
             </SelectValue>
           </SelectTrigger>
           <SelectContent className="max-h-72">
             {props.locales.map((l) => (
               <SelectItem key={l} value={l}>
-                {getLocaleLabel(l)}
+                {getLocaleFlag(l)} {getLocaleLabel(l)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -107,6 +130,7 @@ export function Toolbar(props: Props) {
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <SaveStatus savedAt={props.savedAt} saveError={props.saveError} />
         <Separator orientation="vertical" className="h-5" />
+        <ThemeToggle disabled={props.busy} />
         <Button
           variant="ghost"
           size="icon"
@@ -123,18 +147,18 @@ export function Toolbar(props: Props) {
             onClick={props.onStopExport}
             variant="destructive"
             size="sm"
-            className="h-8 gap-1.5 px-3 text-xs font-semibold animate-pulse"
+            className="h-8 gap-1.5 px-3 text-xs font-semibold"
             title="Stop export process"
           >
             <Square className="h-3.5 w-3.5 fill-current" />
-            Stop ({props.exporting})
+            Stop
           </Button>
         ) : (
           <Button
             onClick={props.onExport}
             size="sm"
             className="h-8 gap-1.5"
-            title="Export iPhone App Store screenshot bundle as zip"
+            title={`Export ${deviceLabel} App Store screenshot bundle as zip`}
           >
             <Download className="h-4 w-4" />
             Export bundle
@@ -147,7 +171,7 @@ export function Toolbar(props: Props) {
           <DialogHeader>
             <DialogTitle>Reset to defaults?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to reset your iPhone screens to defaults? Your canvas edits, uploaded screenshots, and copy will be lost.
+              Are you sure you want to reset your {deviceLabel} screens to defaults? Your canvas edits, uploaded screenshots, and copy will be lost.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap justify-end gap-2">
@@ -184,7 +208,7 @@ function SaveStatus({ savedAt, saveError }: { savedAt: number | null; saveError:
         className="flex items-center gap-1 text-xs text-destructive"
         title={saveError}
       >
-        <AlertTriangle className="h-3.5 w-3.5" /> save failed
+        <AlertTriangle className="h-3.5 w-3.5" /> Save Failed
       </span>
     );
   }
@@ -192,19 +216,19 @@ function SaveStatus({ savedAt, saveError }: { savedAt: number | null; saveError:
   if (!savedAt) {
     return (
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Cloud className="h-3.5 w-3.5" /> not saved yet
+        <Cloud className="h-3.5 w-3.5" /> Not Saved Yet
       </span>
     );
   }
   const seconds = Math.max(0, Math.round((Date.now() - savedAt) / 1000));
   const label =
     seconds < 5
-      ? "saved"
+      ? "Saved"
       : seconds < 60
-        ? `saved ${seconds}s ago`
+        ? `Saved ${seconds}s Ago`
         : seconds < 3600
-          ? `saved ${Math.round(seconds / 60)}m ago`
-          : `saved ${Math.round(seconds / 3600)}h ago`;
+          ? `Saved ${Math.round(seconds / 60)}m Ago`
+          : `Saved ${Math.round(seconds / 3600)}h Ago`;
   return (
     <span className="flex items-center gap-1 text-xs text-muted-foreground">
       <Check className="h-3.5 w-3.5 text-green-500" /> {label}

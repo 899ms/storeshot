@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { IPAD_MK_RATIO } from "@/lib/constants";
 import { img } from "@/lib/image-cache";
 
 type FrameProps = {
@@ -175,6 +176,125 @@ export function Phone({ src, alt = "", style, hideEmpty }: FrameProps) {
             />
           </div>
 
+          {/* Screenshot Content */}
+          {resolved ? (
+            <img
+              src={resolved}
+              alt={alt}
+              style={{
+                display: "block",
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "top",
+              }}
+              draggable={false}
+            />
+          ) : hideEmpty ? null : (
+            <EmptySlot />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 13" iPad Pro — Vector precision frame, uniform bezel, top-center camera.
+// Screen slot (94.8% × 96.0%) is exactly 2064/2752 aspect with the outer
+// IPAD_MK_RATIO, so screenshots show fully.
+export function IPad({ src, alt = "", style, hideEmpty }: FrameProps) {
+  const resolved = img(src);
+  return (
+    <div
+      style={{
+        position: "relative",
+        aspectRatio: String(IPAD_MK_RATIO),
+        ...style,
+      }}
+    >
+      {/* Aluminum chassis */}
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          borderRadius: "4% / 3%",
+          background: "linear-gradient(150deg, #4b4b53 0%, #2a2a30 30%, #131316 70%, #2e2e35 100%)",
+          boxShadow:
+            "inset 0 0 0 1.5px rgba(255, 255, 255, 0.2), inset 0 0 0 3px rgba(0, 0, 0, 0.8), 0 20px 50px -10px rgba(0, 0, 0, 0.6), 0 6px 18px rgba(0, 0, 0, 0.4)",
+          position: "relative",
+          overflow: "visible",
+        }}
+      >
+        {/* Power button (top edge) */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "-1%",
+            right: "12%",
+            width: "9%",
+            height: "1%",
+            borderRadius: "3px 3px 0 0",
+            background: "linear-gradient(to bottom, #2c2c32, #484850)",
+          }}
+        />
+        {/* Volume buttons (right edge) */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "9%",
+            right: "-1%",
+            width: "1%",
+            height: "4%",
+            borderRadius: "0 3px 3px 0",
+            background: "linear-gradient(to left, #2c2c32, #484850)",
+          }}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "14.5%",
+            right: "-1%",
+            width: "1%",
+            height: "4%",
+            borderRadius: "0 3px 3px 0",
+            background: "linear-gradient(to left, #2c2c32, #484850)",
+          }}
+        />
+
+        {/* Front camera centered in the top bezel */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "0.3%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "2.1%",
+            aspectRatio: "1 / 1",
+            borderRadius: "50%",
+            background: "radial-gradient(circle at 38% 38%, #1c2a4a 0%, #0c121e 60%, #03060a 100%)",
+            boxShadow: "inset 0 0 1px 1px rgba(255,255,255,0.12)",
+            zIndex: 30,
+          }}
+        />
+
+        {/* Inner Screen Area */}
+        <div
+          style={{
+            position: "absolute",
+            left: "2.6%",
+            top: "2%",
+            width: "94.8%",
+            height: "96%",
+            borderRadius: "1.6% / 1.2%",
+            overflow: "hidden",
+            background: "#000",
+            zIndex: 10,
+          }}
+        >
           {/* Screenshot Content */}
           {resolved ? (
             <img

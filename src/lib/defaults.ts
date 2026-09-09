@@ -10,42 +10,43 @@ function en(text: string): Record<string, string> {
   return { en: text };
 }
 
-export function makeStarterSlides(): Slide[] {
+export function makeStarterSlides(device: Device = "iphone"): Slide[] {
+  const base = device === "ipad" ? "/screenshots/apple/ipad" : "/screenshots/apple/iphone";
   return [
     {
       id: nid(),
       layout: "hero",
       label: en("THE ALL-IN-ONE APP"),
       headline: en("Simple.\nPowerful.\nYours."),
-      screenshot: "/screenshots/apple/iphone/{locale}/01.png",
+      screenshot: `${base}/{locale}/01.png`,
     },
     {
       id: nid(),
       layout: "device-bottom",
       label: en("SMART WORKFLOW"),
       headline: en("Focus on what\nmatters most."),
-      screenshot: "/screenshots/apple/iphone/{locale}/05.png",
+      screenshot: `${base}/{locale}/05.png`,
     },
     {
       id: nid(),
       layout: "device-bottom",
       label: en("POWERFUL TOOLS"),
       headline: en("Everything you need,\nright at hand."),
-      screenshot: "/screenshots/apple/iphone/{locale}/02.png",
+      screenshot: `${base}/{locale}/02.png`,
     },
     {
       id: nid(),
       layout: "device-bottom",
       label: en("REAL-TIME SYNC"),
       headline: en("Seamless across\nevery device."),
-      screenshot: "/screenshots/apple/iphone/{locale}/03.png",
+      screenshot: `${base}/{locale}/03.png`,
     },
     {
       id: nid(),
       layout: "device-top",
       label: en("DETAILED INSIGHTS"),
       headline: en("Track progress with\nclarity."),
-      screenshot: "/screenshots/apple/iphone/{locale}/04.png",
+      screenshot: `${base}/{locale}/04.png`,
       inverted: true,
     },
     {
@@ -53,7 +54,7 @@ export function makeStarterSlides(): Slide[] {
       layout: "hero",
       label: en("GET STARTED TODAY"),
       headline: en("Available now\non the App Store."),
-      screenshot: "/screenshots/apple/iphone/{locale}/06.png",
+      screenshot: `${base}/{locale}/06.png`,
     },
   ];
 }
@@ -69,7 +70,8 @@ export const DEFAULT_PROJECT: ProjectState = {
   orientation: "portrait",
   appIcon: "/app-icon.png",
   slidesByDevice: {
-    iphone: makeStarterSlides(),
+    iphone: makeStarterSlides("iphone"),
+    ipad: makeStarterSlides("ipad"),
   },
 };
 
