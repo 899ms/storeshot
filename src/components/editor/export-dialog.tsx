@@ -510,7 +510,7 @@ export function ExportDialog({
               className="h-8 text-xs font-semibold gap-1.5 shadow-sm"
             >
               <Download className="h-3.5 w-3.5" />
-              Export Bundle ({totalScreenshots} PNG{totalScreenshots === 1 ? "" : "s"})
+              Export ({totalScreenshots} PNG{totalScreenshots === 1 ? "" : "s"})
             </Button>
           </div>
         </DialogFooter>

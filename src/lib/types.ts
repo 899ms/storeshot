@@ -10,7 +10,8 @@ export type SlideLayout =
   | "device-bottom"    // headline top, device bottom-center
   | "device-top"       // device top, headline bottom (contrast)
   | "two-devices"      // back + front phones, headline above
-  | "no-device";       // big headline + decorative blob, no device
+  | "no-device"        // big headline + decorative blob, no device
+  | "static";          // full-bleed image only, no frames or texts
 
 // Per-element rect in canvas pixel space. Optional rotation in degrees and zIndex.
 export type ElementTransform = {

@@ -161,7 +161,7 @@ export function Toolbar(props: Props) {
             title={`Export ${deviceLabel} App Store screenshot bundle as zip`}
           >
             <Download className="h-4 w-4" />
-            Export bundle
+            Export
           </Button>
         )}
       </div>

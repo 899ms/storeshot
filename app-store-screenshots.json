@@ -53,6 +53,17 @@
   "slidesByDevice": {
     "iphone": [
       {
+        "id": "s_s7w34or",
+        "layout": "static",
+        "label": {
+          "en": "NEW"
+        },
+        "headline": {
+          "en": "Edit this\nheadline."
+        },
+        "screenshot": "/screenshots/uploaded/604cbc88243c2461.jpg"
+      },
+      {
         "id": "s_visaz_1",
         "layout": "hero",
         "label": {
@@ -599,35 +610,6 @@
         },
         "screenshot": "/screenshots/apple/iphone/{locale}/06.png",
         "inverted": true
-      },
-      {
-        "id": "s_eq69zjg",
-        "layout": "device-bottom",
-        "label": {
-          "en": "NEW"
-        },
-        "headline": {
-          "en": "Edit this\nheadline."
-        },
-        "screenshot": "",
-        "transforms": {
-          "caption": {
-            "x": 105.60000000000036,
-            "y": 229.44,
-            "width": 1108.8,
-            "height": 803.04,
-            "rotation": 0,
-            "zIndex": 4
-          },
-          "device": {
-            "x": 172.4400000000005,
-            "y": 745.6800000000001,
-            "width": 975.1199999999999,
-            "height": 2064.96,
-            "rotation": 0,
-            "zIndex": 3
-          }
-        }
       }
     ],
     "ipad": [

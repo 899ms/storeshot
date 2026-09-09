@@ -688,6 +688,68 @@ function ScreenGuide({
   );
 }
 
+// Full-bleed image for "static" screens. Non-interactive (pointer events
+// pass through) so the screen itself stays selectable but exposes no
+// movable elements.
+function StaticImage({
+  slide,
+  locale,
+  x,
+  cW,
+  cH,
+  hideEmpty,
+}: {
+  slide: Slide;
+  locale: string;
+  x: number;
+  cW: number;
+  cH: number;
+  hideEmpty?: boolean;
+}) {
+  const src = img(resolveScreenshot(slide.screenshot, locale));
+  if (!src) {
+    if (hideEmpty) return null;
+    return (
+      <div
+        style={{
+          position: "absolute",
+          left: x,
+          top: 0,
+          width: cW,
+          height: cH,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: cW * 0.08,
+          border: `${Math.max(3, cW * 0.004)}px dashed rgba(125, 135, 155, 0.65)`,
+          color: "rgba(125, 135, 155, 0.9)",
+          fontSize: Math.max(20, cW * 0.032),
+          fontWeight: 600,
+          textAlign: "center",
+        }}
+      >
+        Add a static image in the Inspector
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      style={{
+        position: "absolute",
+        left: x,
+        top: 0,
+        width: cW,
+        height: cH,
+        objectFit: "cover",
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 function SlideElements({
   slide,
   device,
@@ -722,6 +784,21 @@ function SlideElements({
   const screenshot = resolveScreenshot(slide.screenshot, locale);
   const screenshotSecondary = resolveScreenshot(slide.screenshotSecondary, locale);
   const { cW, cH, Frame, frameAspect, defaults } = getSlideGeometry(slide, device, orientation);
+  // Static screens render one full-bleed image with no frames, caption, or
+  // text elements. Branching here covers SlideCanvas, DeckCanvas (preview +
+  // export), and thumbnails in one place.
+  if (slide.layout === "static") {
+    return (
+      <StaticImage
+        slide={slide}
+        locale={locale}
+        x={screenX}
+        cW={cW}
+        cH={cH}
+        hideEmpty={hideEmpty}
+      />
+    );
+  }
   const inverted = !!slide.inverted;
   const captionRect = rectFor("caption", slide, defaults);
   const deviceRect = rectFor("device", slide, defaults);

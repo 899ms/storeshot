@@ -79,6 +79,7 @@ export function Inspector({
   onSelectElement,
 }: Props) {
   const isNoDevice = slide.layout === "no-device";
+  const isStatic = slide.layout === "static";
   const layoutValue = slide.layout;
   const layoutOptions = Object.entries(LAYOUT_LABEL);
   const localeLabel = slide.label?.[locale] ?? "";
@@ -152,32 +153,40 @@ export function Inspector({
           </Select>
         </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs">Label</Label>
-          <Input
-            value={localeLabel}
-            onChange={(e) => setLocaleField("label", e.target.value)}
-            placeholder={labelPlaceholder}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-baseline justify-between">
-            <Label className="text-xs">Headline</Label>
-            <span className="text-[10px] text-muted-foreground">newline = break</span>
+        {!isStatic && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Label</Label>
+            <Input
+              value={localeLabel}
+              onChange={(e) => setLocaleField("label", e.target.value)}
+              placeholder={labelPlaceholder}
+            />
           </div>
-          <Textarea
-            value={localeHeadline}
-            onChange={(e) => setLocaleField("headline", e.target.value)}
-            rows={3}
-            placeholder={headlinePlaceholder}
-          />
-        </div>
+        )}
+
+        {!isStatic && (
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between">
+              <Label className="text-xs">Headline</Label>
+              <span className="text-[10px] text-muted-foreground">newline = break</span>
+            </div>
+            <Textarea
+              value={localeHeadline}
+              onChange={(e) => setLocaleField("headline", e.target.value)}
+              rows={3}
+              placeholder={headlinePlaceholder}
+            />
+          </div>
+        )}
 
         {!isNoDevice && (
           <div className="space-y-1.5">
             <Label className="text-xs">
-              {slide.layout === "two-devices" ? "Front device screenshot" : "Screenshot"}
+              {isStatic
+                ? "Static image"
+                : slide.layout === "two-devices"
+                  ? "Front device screenshot"
+                  : "Screenshot"}
             </Label>
             <ScreenshotPicker
               label="Primary"
@@ -200,15 +209,17 @@ export function Inspector({
           </div>
         )}
 
-        <ElementTransformControls
-          slide={slide}
-          device={device}
-          orientation={orientation}
-          locale={locale}
-          selectedElementId={selectedElementId}
-          onChange={onChange}
-          onSelectElement={onSelectElement}
-        />
+        {!isStatic && (
+          <ElementTransformControls
+            slide={slide}
+            device={device}
+            orientation={orientation}
+            locale={locale}
+            selectedElementId={selectedElementId}
+            onChange={onChange}
+            onSelectElement={onSelectElement}
+          />
+        )}
       </div>
     </div>
   );

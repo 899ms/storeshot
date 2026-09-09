@@ -76,6 +76,10 @@ export const DEFAULT_PROJECT: ProjectState = {
 };
 
 export function newSlide(layout: Slide["layout"] = "device-bottom"): Slide {
+  // Static screens carry no localizable text — translations ignore them.
+  if (layout === "static") {
+    return { id: nid(), layout, label: {}, headline: {}, screenshot: "" };
+  }
   return {
     id: nid(),
     layout,

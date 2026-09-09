@@ -137,6 +137,7 @@ export const LAYOUT_LABEL: Record<SlideLayout, string> = {
   "device-top": "Device top",
   "two-devices": "Two devices",
   "no-device": "No device",
+  static: "Static image",
 };
 
 // Short description shown under each layout name
@@ -146,4 +147,5 @@ export const LAYOUT_HINT: Record<SlideLayout, string> = {
   "device-top": "Flipped — device on top",
   "two-devices": "Layered back + front phones",
   "no-device": "Big standalone headline",
+  static: "Full-bleed image, no frames or text",
 };
