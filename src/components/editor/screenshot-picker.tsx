@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { didFail, img, setImage } from "@/lib/image-cache";
 import { resolveScreenshot } from "@/lib/locale";
+import { getActiveWorkspace } from "@/lib/workspaces";
 
 type Props = {
   label: string;
@@ -26,10 +27,11 @@ async function fileToDataUrl(file: File): Promise<string> {
 
 async function uploadDataUrl(dataUrl: string): Promise<string | null> {
   try {
+    const ws = getActiveWorkspace();
     const resp = await fetch("/api/upload", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ dataUrl }),
+      body: JSON.stringify(ws ? { dataUrl, ws } : { dataUrl }),
     });
     if (!resp.ok) return null;
     const json = (await resp.json()) as { ok: boolean; path?: string };

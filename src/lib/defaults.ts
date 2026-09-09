@@ -11,42 +11,44 @@ function en(text: string): Record<string, string> {
 }
 
 export function makeStarterSlides(device: Device = "iphone"): Slide[] {
-  const base = device === "ipad" ? "/screenshots/apple/ipad" : "/screenshots/apple/iphone";
+  // Text-only starters — all imagery comes from the user via the screenshot
+  // pickers and is stored in the workspace's `screenshots/` folder.
+  void device;
   return [
     {
       id: nid(),
       layout: "hero",
       label: en("THE ALL-IN-ONE APP"),
       headline: en("Simple.\nPowerful.\nYours."),
-      screenshot: `${base}/{locale}/01.png`,
+      screenshot: "",
     },
     {
       id: nid(),
       layout: "device-bottom",
       label: en("SMART WORKFLOW"),
       headline: en("Focus on what\nmatters most."),
-      screenshot: `${base}/{locale}/05.png`,
+      screenshot: "",
     },
     {
       id: nid(),
       layout: "device-bottom",
       label: en("POWERFUL TOOLS"),
       headline: en("Everything you need,\nright at hand."),
-      screenshot: `${base}/{locale}/02.png`,
+      screenshot: "",
     },
     {
       id: nid(),
       layout: "device-bottom",
       label: en("REAL-TIME SYNC"),
       headline: en("Seamless across\nevery device."),
-      screenshot: `${base}/{locale}/03.png`,
+      screenshot: "",
     },
     {
       id: nid(),
       layout: "device-top",
       label: en("DETAILED INSIGHTS"),
       headline: en("Track progress with\nclarity."),
-      screenshot: `${base}/{locale}/04.png`,
+      screenshot: "",
       inverted: true,
     },
     {
@@ -54,7 +56,7 @@ export function makeStarterSlides(device: Device = "iphone"): Slide[] {
       layout: "hero",
       label: en("GET STARTED TODAY"),
       headline: en("Available now\non the App Store."),
-      screenshot: `${base}/{locale}/06.png`,
+      screenshot: "",
     },
   ];
 }
@@ -68,12 +70,28 @@ export const DEFAULT_PROJECT: ProjectState = {
   locale: DEFAULT_LOCALE,
   device: "iphone",
   orientation: "portrait",
-  appIcon: "/app-icon.png",
   slidesByDevice: {
     iphone: makeStarterSlides("iphone"),
     ipad: makeStarterSlides("ipad"),
   },
 };
+
+// A blank project for a workspace we haven't worked in before: no slides, no
+// app icon, no sample imagery — everything the user sees comes from their own
+// workspace's `screenshots/` folder once they add it.
+export function makeEmptyProject(): ProjectState {
+  return {
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    appName: "",
+    themeId: DEFAULT_PROJECT.themeId,
+    connectedCanvas: true,
+    locales: ["en"],
+    locale: "en",
+    device: "iphone",
+    orientation: "portrait",
+    slidesByDevice: { iphone: [], ipad: [] },
+  };
+}
 
 export function newSlide(layout: Slide["layout"] = "device-bottom"): Slide {
   // Static screens carry no localizable text — translations ignore them.

@@ -10,11 +10,13 @@ import {
   supportsLandscape,
   themeById,
 } from "@/lib/constants";
-import { detectPlatform, nid } from "@/lib/defaults";
+import { detectPlatform, newSlide, nid } from "@/lib/defaults";
 import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/elements";
 import { preloadImages } from "@/lib/image-cache";
 import { resolveScreenshot, writeLocalized } from "@/lib/locale";
 import { useProject } from "@/lib/storage";
+import { applyLocaleTranslations } from "@/lib/translate";
+import { useActiveWorkspace } from "@/lib/workspaces";
 import type {
   BuiltInElementId,
   Device,
@@ -24,7 +26,9 @@ import type {
   Slide,
 } from "@/lib/types";
 import { ExportProgressIndicator } from "./export-progress";
+import { Button } from "@/components/ui/button";
 import { Inspector } from "./inspector";
+import { SettingsDialog } from "./settings-dialog";
 import { PreviewStage } from "./preview-stage";
 import { Sidebar } from "./sidebar";
 import { DeckCanvas, getCanvas } from "./slide-canvas";
@@ -39,11 +43,14 @@ import {
 } from "@/lib/export-options";
 
 export function ScreenshotEditor() {
-  const { state, setState, hydrated, savedAt, saveError, reset, resetDevice, undo, redo } = useProject();
+  const workspace = useActiveWorkspace();
+  const { state, setState, hydrated, savedAt, saveError, reset, resetDevice, undo, redo } =
+    useProject(workspace);
   const [activeSlideId, setActiveSlideId] = React.useState<string | null>(null);
   const [selectedElement, setSelectedElement] = React.useState<SelectedElement | null>(null);
   const [exporting, setExporting] = React.useState<string | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [ready, setReady] = React.useState(false);
   const [exportLocaleOverride, setExportLocaleOverride] = React.useState<string | null>(null);
   const [exportSlideIndex, setExportSlideIndex] = React.useState(0);
@@ -51,6 +58,19 @@ export function ScreenshotEditor() {
   const stopExportRef = React.useRef<boolean>(false);
 
   const currentSlides = state.slidesByDevice[state.device] || [];
+  // Translation source: the editing locale when it has text, else the first
+  // locale with content, else the first project locale.
+  const translationSourceLocale = React.useMemo(() => {
+    const hasText = (locale: string) =>
+      currentSlides.some(
+        (s) =>
+          (s.label?.[locale] || "").trim() ||
+          (s.headline?.[locale] || "").trim() ||
+          (s.textElements || []).some((el) => (el.text?.[locale] || "").trim()),
+      );
+    if (hasText(state.locale)) return state.locale;
+    return state.locales.find((l) => hasText(l)) || state.locales[0] || "en";
+  }, [currentSlides, state.locale, state.locales]);
   const activeSlide =
     currentSlides.find((s) => s.id === activeSlideId) || currentSlides[0] || null;
   const theme = themeById(state.themeId);
@@ -107,7 +127,9 @@ export function ScreenshotEditor() {
 
   React.useEffect(() => {
     if (!hydrated) return;
-    preloadImages(assetPaths).finally(() => setReady(true));
+    preloadImages(assetPaths)
+      .catch(() => {})
+      .finally(() => setReady(true));
     // assetPaths is derived from assetSig; depending on the string keeps the
     // effect from re-firing when slidesByDevice churns without path changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -722,6 +744,7 @@ export function ScreenshotEditor() {
         orientation={state.orientation}
         setOrientation={(v) => setState((p) => ({ ...p, orientation: v }))}
         onExport={() => setExportDialogOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
         onStopExport={stopExport}
         onResetAll={() => {
           reset();
@@ -739,6 +762,48 @@ export function ScreenshotEditor() {
         busy={busy}
       />
 
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        locales={state.locales}
+        currentLocale={state.locale}
+        sourceLocale={translationSourceLocale}
+        slides={currentSlides}
+        disabled={busy}
+        onApplyTranslations={(targetLocale, results, overwrite) =>
+          setState((prev) => ({
+            ...prev,
+            slidesByDevice: {
+              ...prev.slidesByDevice,
+              [prev.device]: applyLocaleTranslations(
+                prev.slidesByDevice[prev.device] || [],
+                results,
+                targetLocale,
+                overwrite,
+              ),
+            },
+          }))
+        }
+        onAddLocale={(locale) =>
+          setState((prev) =>
+            prev.locales.includes(locale)
+              ? prev
+              : { ...prev, locales: [...prev.locales, locale] },
+          )
+        }
+        onRemoveLocale={(locale) =>
+          setState((prev) => {
+            if (!prev.locales.includes(locale) || prev.locales.length <= 1) return prev;
+            const locales = prev.locales.filter((l) => l !== locale);
+            return {
+              ...prev,
+              locales,
+              locale: prev.locale === locale ? locales[0] : prev.locale,
+            };
+          })
+        }
+      />
+
       <ExportDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
@@ -751,6 +816,24 @@ export function ScreenshotEditor() {
       />
 
       <div className="flex flex-1 overflow-hidden md:flex-row flex-col">
+        {!workspace ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+            <p className="text-lg font-semibold">Choose a workspace to get started</p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Pick the project folder you want to work in — its screens, uploads, and
+              project file live in a screenshots/ folder inside it.
+            </p>
+            <Button
+              type="button"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("open-workspace-dialog"))
+              }
+            >
+              Open folder…
+            </Button>
+          </div>
+        ) : (
+        <>
         <aside className="md:w-72 w-full shrink-0 border-r bg-card md:max-h-none max-h-64 overflow-hidden">
           <Sidebar
             slides={currentSlides}
@@ -792,9 +875,23 @@ export function ScreenshotEditor() {
               onSelectElement={setSelectedElement}
             />
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">No screen selected</p>
-              <p>Add a screen on the left to get started.</p>
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
+              <p className="text-base font-semibold text-foreground">
+                {workspace ? "This workspace is empty" : "No screen selected"}
+              </p>
+              <p className="max-w-sm text-xs">
+                {workspace
+                  ? "Nothing has been added here yet — your screens, uploads, and project file live in this workspace's screenshots/ folder. Add your first screen to get started."
+                  : "Add a screen on the left to get started."}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy}
+                onClick={() => addSlide(newSlide())}
+              >
+                Add your first screen
+              </Button>
             </div>
           )}
         </main>
@@ -806,6 +903,8 @@ export function ScreenshotEditor() {
               device={state.device}
               orientation={state.orientation}
               locale={state.locale}
+              locales={state.locales}
+              sourceLocale={translationSourceLocale}
               selectedElementId={
                 selectedElement?.slideId === activeSlide.id ? selectedElement.elementId : null
               }
@@ -825,6 +924,8 @@ export function ScreenshotEditor() {
             </div>
           )}
         </aside>
+        </>
+        )}
       </div>
 
       {/* Off-screen export container — full-resolution canvases for html-to-image. */}

@@ -9,6 +9,8 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  Languages,
+  Loader2,
   Plus,
   RotateCw,
   Trash2,
@@ -27,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
+import { activeProvider, useAppSettings } from "@/lib/app-settings";
 import { LAYOUT_HINT, LAYOUT_LABEL } from "@/lib/constants";
 import { nid } from "@/lib/defaults";
 import {
@@ -35,7 +38,12 @@ import {
   textElementKey,
   toTextElementId,
 } from "@/lib/elements";
-import { pickText, writeLocalized } from "@/lib/locale";
+import { getLocaleFlag, getLocaleLabel, pickText, writeLocalized } from "@/lib/locale";
+import {
+  applyLocaleTranslations,
+  translateSlidesForLocale,
+  TranslateError,
+} from "@/lib/translate";
 import type {
   BuiltInElementId,
   Device,
@@ -54,6 +62,8 @@ type Props = {
   device: Device;
   orientation: Orientation;
   locale: string;
+  locales: string[];
+  sourceLocale: string;
   selectedElementId: ElementId | null;
   disabled?: boolean;
   onExportSlide?: () => void;
@@ -72,6 +82,8 @@ export function Inspector({
   device,
   orientation,
   locale,
+  locales,
+  sourceLocale,
   selectedElementId,
   disabled,
   onExportSlide,
@@ -209,6 +221,17 @@ export function Inspector({
           </div>
         )}
 
+        {!isStatic && locales.length > 1 && (
+          <ScreenTranslate
+            slide={slide}
+            locale={locale}
+            locales={locales}
+            sourceLocale={sourceLocale}
+            disabled={disabled}
+            onChange={onChange}
+          />
+        )}
+
         {!isStatic && (
           <ElementTransformControls
             slide={slide}
@@ -221,6 +244,133 @@ export function Inspector({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// Re-translate the current screen's texts into one target locale.
+// Overwrites the target (it's an explicit re-translate); the run applies as
+// a single onChange so Ctrl+Z restores the previous texts. Hidden for static
+// screens, which carry no texts.
+function ScreenTranslate({
+  slide,
+  locale,
+  locales,
+  sourceLocale,
+  disabled,
+  onChange,
+}: {
+  slide: Slide;
+  locale: string;
+  locales: string[];
+  sourceLocale: string;
+  disabled?: boolean;
+  onChange: (patch: Partial<Slide>) => void;
+}) {
+  const { settings } = useAppSettings();
+  const provider = activeProvider(settings);
+  const targets = React.useMemo(() => locales.filter((l) => l !== sourceLocale), [locales, sourceLocale]);
+  const [target, setTarget] = React.useState<string>(
+    locale !== sourceLocale ? locale : (targets[0] ?? ""),
+  );
+  const [running, setRunning] = React.useState(false);
+  const [status, setStatus] = React.useState<
+    { kind: "done"; count: number } | { kind: "error"; error: string } | null
+  >(null);
+  const abortRef = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    if (!targets.includes(target)) setTarget(targets[0] ?? "");
+  }, [targets, target]);
+
+  React.useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
+  async function run() {
+    if (!target || running) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setRunning(true);
+    setStatus(null);
+    try {
+      const results = await translateSlidesForLocale(
+        { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: settings.model },
+        [slide],
+        sourceLocale,
+        target,
+        { overwrite: true, signal: controller.signal },
+      );
+      const next = applyLocaleTranslations([slide], results, target, true)[0];
+      onChange({ label: next.label, headline: next.headline, textElements: next.textElements });
+      const count = Object.values(results).reduce(
+        (n, r) =>
+          n +
+          (r.label !== undefined ? 1 : 0) +
+          (r.headline !== undefined ? 1 : 0) +
+          Object.keys(r.texts || {}).length,
+        0,
+      );
+      setStatus({ kind: "done", count });
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setStatus({
+          kind: "error",
+          error: e instanceof TranslateError ? e.message : String(e),
+        });
+      }
+    } finally {
+      setRunning(false);
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">Translate this screen</Label>
+      {!provider.apiKey ? (
+        <p className="text-[11px] text-muted-foreground">
+          Add an API key in Settings → Providers to enable translation.
+        </p>
+      ) : (
+        <div className="flex gap-2">
+          <Select value={target} onValueChange={setTarget} disabled={disabled || running}>
+            <SelectTrigger className="h-7 flex-1 text-xs" aria-label="Translation target language">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {targets.map((l) => (
+                <SelectItem key={l} value={l}>
+                  {getLocaleFlag(l)} {getLocaleLabel(l)} ({l})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 shrink-0 gap-1 text-xs"
+            disabled={disabled || running || !target}
+            onClick={() => void run()}
+            title={`Re-translate label, headline and text elements from ${sourceLocale}`}
+          >
+            {running ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Languages className="h-3 w-3" />
+            )}
+            {running ? "…" : "Translate"}
+          </Button>
+        </div>
+      )}
+      {status?.kind === "done" && (
+        <p className="text-[11px] text-green-600 dark:text-green-400">
+          {status.count} strings translated — undo with Ctrl+Z.
+        </p>
+      )}
+      {status?.kind === "error" && (
+        <p className="text-[11px] text-destructive">{status.error}</p>
+      )}
     </div>
   );
 }

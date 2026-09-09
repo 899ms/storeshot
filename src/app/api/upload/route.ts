@@ -2,11 +2,9 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { UPLOADS_DIRNAME, resolveWorkspaceDir, uploadsDirFor } from "@/lib/workspace-server";
 
 export const dynamic = "force-dynamic";
-
-const UPLOAD_DIR_REL = path.join("public", "screenshots", "uploaded");
-const PUBLIC_PREFIX = "/screenshots/uploaded";
 
 const MIME_EXT: Record<string, string> = {
   "image/png": "png",
@@ -23,9 +21,9 @@ function parseDataUrl(dataUrl: string): { mime: string; bytes: Buffer } | null {
 }
 
 export async function POST(req: Request) {
-  let body: { dataUrl?: string };
+  let body: { dataUrl?: string; ws?: string };
   try {
-    body = (await req.json()) as { dataUrl?: string };
+    body = (await req.json()) as { dataUrl?: string; ws?: string };
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
@@ -49,7 +47,24 @@ export async function POST(req: Request) {
 
   const hash = createHash("sha1").update(parsed.bytes).digest("hex").slice(0, 16);
   const filename = `${hash}.${ext}`;
-  const absDir = path.join(process.cwd(), UPLOAD_DIR_REL);
+
+  // Uploads always live inside the active workspace's `screenshots/` folder
+  // (<workspace>/screenshots/uploads). A workspace is required — there is no
+  // default location. Returns a workspace-relative path (`uploads/<file>`)
+  // that resolves through /api/workspaces/files.
+  if (!body?.ws || typeof body.ws !== "string" || !body.ws.trim()) {
+    return NextResponse.json({ ok: false, error: "Workspace is required" }, { status: 400 });
+  }
+  let absDir: string;
+  try {
+    absDir = uploadsDirFor(resolveWorkspaceDir(body.ws));
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { status: 400 },
+    );
+  }
+  const publicPath = `${UPLOADS_DIRNAME}/${filename}`;
   const absFile = path.join(absDir, filename);
 
   try {
@@ -59,7 +74,7 @@ export async function POST(req: Request) {
     } catch {
       await fs.writeFile(absFile, parsed.bytes);
     }
-    return NextResponse.json({ ok: true, path: `${PUBLIC_PREFIX}/${filename}` });
+    return NextResponse.json({ ok: true, path: publicPath });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : String(e) },

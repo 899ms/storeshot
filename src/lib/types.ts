@@ -53,7 +53,7 @@ export type Slide = {
   layout: SlideLayout;
   label: LocalizedText;       // tiny uppercase caption above headline, per locale
   headline: LocalizedText;    // multi-line; newlines are intentional, per locale
-  screenshot: string;         // path under /screenshots/ — may contain {locale}
+  screenshot: string;         // workspace-relative path (e.g. uploads/a.png) or absolute /… — may contain {locale}
   screenshotSecondary?: string; // for two-devices layout — may contain {locale}
   inverted?: boolean;         // dark background variant
   // Per-element overrides; when present, replaces layout default placement.
@@ -94,5 +94,5 @@ export type ProjectState = {
   orientation: Orientation;
   // Per-device slide decks so platform switching preserves work
   slidesByDevice: Record<Device, Slide[]>;
-  appIcon?: string;    // path under /public (e.g. /app-icon.png)
+  appIcon?: string;    // workspace-relative path (e.g. uploads/app-icon.png) or absolute /…
 };
