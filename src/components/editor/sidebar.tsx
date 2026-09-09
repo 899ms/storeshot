@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { Device, Orientation, Slide, Theme } from "@/lib/types";
 import { newSlide } from "@/lib/defaults";
 import { SlideThumb } from "./slide-thumb";
@@ -103,12 +104,12 @@ export function Sidebar({
                 />
               ))}
               {slides.length === 0 && (
-                <div className="rounded-lg border border-dashed p-6 text-center">
+                <Card className="border-dashed p-6 text-center shadow-none">
                   <p className="text-xs font-medium text-foreground">No screens yet</p>
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     Click <span className="font-semibold">Add screen</span> to get started.
                   </p>
-                </div>
+                </Card>
               )}
             </div>
           </SortableContext>

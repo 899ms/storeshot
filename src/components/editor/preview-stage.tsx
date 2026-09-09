@@ -1,7 +1,9 @@
 "use client";
 import * as React from "react";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { DEVICE_LABEL, LAYOUT_LABEL } from "@/lib/constants";
 import type {
   Device,
@@ -163,7 +165,10 @@ export function PreviewStage({
         </div>
       </div>
 
-      <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-1.5 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+      <Badge
+        variant="secondary"
+        className="pointer-events-none absolute left-4 top-4 gap-1.5 px-2 py-1 text-[11px] font-normal text-muted-foreground shadow-sm backdrop-blur"
+      >
         <span className="font-medium text-foreground">{DEVICE_LABEL[device]}</span>
         {activeSlide && (
           <>
@@ -179,9 +184,9 @@ export function PreviewStage({
             <span>isolated</span>
           </>
         )}
-      </div>
+      </Badge>
 
-      <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-md bg-background/85 px-1.5 py-1 text-[10px] tabular-nums text-muted-foreground shadow-sm backdrop-blur">
+      <Card className="absolute bottom-4 right-4 flex items-center gap-1.5 px-1.5 py-1 text-[10px] tabular-nums text-muted-foreground shadow-sm">
         <span className="px-1">{slides.length}× {cW}×{cH}</span>
         <span aria-hidden className="text-border">|</span>
         <Button
@@ -220,7 +225,7 @@ export function PreviewStage({
         >
           <Maximize2 className="h-3.5 w-3.5" />
         </Button>
-      </div>
+      </Card>
     </div>
   );
 }

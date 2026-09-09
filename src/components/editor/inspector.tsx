@@ -15,6 +15,7 @@ import {
   Type,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { LAYOUT_HINT, LAYOUT_LABEL } from "@/lib/constants";
 import { nid } from "@/lib/defaults";
@@ -109,7 +111,7 @@ export function Inspector({
             <Button
               size="sm"
               variant="outline"
-              className="h-7 gap-1.5 text-xs px-2.5 shrink-0 bg-secondary/50 hover:bg-secondary hover:text-foreground font-medium"
+              className="h-7 shrink-0 gap-1.5 px-2.5 text-xs font-medium"
               onClick={onExportSlide}
               disabled={disabled}
               title={`Export only this screen (${locale.toUpperCase()})`}
@@ -353,7 +355,7 @@ function ElementTransformControls({
   }
 
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+    <Card className="space-y-3 bg-muted/30 p-3">
       <div className="flex items-start justify-between gap-2">
         <div>
           <Label className="text-xs font-semibold">Elements</Label>
@@ -398,7 +400,7 @@ function ElementTransformControls({
           No element selected
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -468,15 +470,13 @@ function ActiveElementPanel({
             {rotation}°
           </span>
         </div>
-        <input
-          type="range"
+        <Slider
           min={-180}
           max={180}
           step={1}
-          value={rotation}
+          value={[rotation]}
           disabled={!engaged}
-          onChange={(e) => onRotate(Number(e.target.value))}
-          className="w-full disabled:opacity-50"
+          onValueChange={([value]) => onRotate(value)}
           aria-label={`${label} rotation`}
         />
       </div>

@@ -4,6 +4,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Copy, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { LAYOUT_LABEL } from "@/lib/constants";
 import { pickText } from "@/lib/locale";
 import type { Device, Orientation, Slide, Theme } from "@/lib/types";
@@ -67,28 +68,31 @@ export function SlideThumb({
   };
 
   return (
-    <div
+    <Card
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group relative flex items-stretch gap-2 rounded-lg border bg-card p-1.5 transition-all hover:border-foreground/30 hover:bg-accent",
+        "group relative flex items-stretch gap-2 p-1.5 transition-all hover:border-foreground/30 hover:bg-accent",
         active && "border-primary ring-1 ring-primary",
       )}
     >
-      <button
+      <Button
         type="button"
-        className="flex w-3 cursor-grab items-center justify-center text-muted-foreground/60 hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:cursor-grabbing"
+        variant="ghost"
+        size="icon"
+        className="h-auto w-3 shrink-0 cursor-grab self-stretch rounded-sm text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
         {...attributes}
         {...listeners}
         aria-label={`Reorder screen ${index + 1} (press space, then arrow keys)`}
       >
         <GripVertical className="h-4 w-4" />
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={onSelect}
-        className="flex flex-1 items-center gap-3 overflow-hidden text-left"
+        className="h-auto flex-1 items-center justify-start gap-3 overflow-hidden p-0 text-left font-normal"
       >
         <div
           aria-hidden
@@ -148,7 +152,7 @@ export function SlideThumb({
             </span>
           ) : null}
         </div>
-      </button>
+      </Button>
 
       {/* Always visible on touch (no hover); fades in on hover on desktop. */}
       <div className="flex flex-col items-center justify-center gap-0.5 opacity-60 transition-opacity focus-within:opacity-100 group-hover:opacity-100 md:opacity-0">
@@ -175,6 +179,6 @@ export function SlideThumb({
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
-    </div>
+    </Card>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import { AlertTriangle, Check, Cloud, Download, RotateCcw, Smartphone, Square, UnfoldHorizontal } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -58,7 +60,7 @@ export function Toolbar(props: Props) {
         disabled={props.busy}
       />
 
-      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <Separator orientation="vertical" className="mx-1 h-5" />
 
       <Button
         type="button"
@@ -78,15 +80,12 @@ export function Toolbar(props: Props) {
         {props.connectedCanvas ? "Connected" : "Isolated"}
       </Button>
 
-      <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      <Separator orientation="vertical" className="mx-1 h-5" />
 
-      <div
-        className="flex h-8 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-xs font-medium text-foreground"
-        title="iPhone (App Store Screenshots)"
-      >
+      <Badge variant="secondary" className="h-8 gap-1.5 px-2.5 text-xs font-medium" title="iPhone (App Store Screenshots)">
         <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
-        <span>iPhone</span>
-      </div>
+        iPhone
+      </Badge>
 
       {showLocale && (
         <Select value={props.locale} onValueChange={props.setLocale} disabled={props.busy}>
@@ -107,7 +106,7 @@ export function Toolbar(props: Props) {
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <SaveStatus savedAt={props.savedAt} saveError={props.saveError} />
-        <span aria-hidden className="h-5 w-px bg-border" />
+        <Separator orientation="vertical" className="h-5" />
         <Button
           variant="ghost"
           size="icon"

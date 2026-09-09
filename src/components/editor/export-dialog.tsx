@@ -5,20 +5,19 @@ import {
   AlertTriangle,
   Apple,
   Check,
-  CheckSquare,
-  ChevronDown,
   Download,
   FolderTree,
   Globe,
   Layers,
-  Monitor,
   Package,
-  ShieldCheck,
   Smartphone,
   Sparkles,
   Tablet,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -29,13 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   EXPORT_TARGETS,
   ExportConfig,
@@ -142,12 +135,19 @@ export function ExportDialog({
   const totalScreenshots =
     selectedTargets.length * selectedLocales.length * selectedSlideIds.length;
 
+  const isExportDisabled =
+    selectedTargetIds.length === 0 ||
+    selectedLocales.length === 0 ||
+    selectedSlideIds.length === 0 ||
+    !!exporting;
+
   // Pre-flight checks
   const missingScreenshotsCount = slides
     .filter((s) => selectedSlideIds.includes(s.id))
     .filter((s) => s.layout !== "no-device" && !s.screenshot).length;
 
   const handleExport = () => {
+    if (isExportDisabled) return;
     onStartExport({
       selectedTargetIds,
       selectedLocales,
@@ -157,285 +157,180 @@ export function ExportDialog({
     onOpenChange(false);
   };
 
-  const iosTargets = EXPORT_TARGETS.filter((t) => t.platform === "ios");
-  const androidTargets = EXPORT_TARGETS.filter((t) => t.platform === "android");
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden p-0 sm:max-w-3xl">
-        <DialogHeader className="border-b px-6 py-4 bg-muted/20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Package className="h-5 w-5" />
+      <DialogContent className="flex flex-col max-h-[85vh] h-[85vh] max-w-3xl overflow-hidden p-0 gap-0 sm:max-w-3xl">
+        {/* Header with Top CTA */}
+        <DialogHeader className="shrink-0 border-b px-6 py-3.5 bg-card/80">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pr-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
+                <Apple className="h-5 w-5" />
               </div>
-              <div>
-                <DialogTitle className="text-lg font-semibold tracking-tight">
-                  Export Screenshots
+              <div className="min-w-0">
+                <DialogTitle className="text-base font-bold tracking-tight">
+                  Export App Store Screenshots
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Choose target stores, device resolutions, and packaging format.
+                <DialogDescription className="text-xs text-muted-foreground line-clamp-1">
+                  Choose devices, screens, and packaging format for your App Store bundle.
                 </DialogDescription>
               </div>
+            </div>
+
+            {/* Prominent Header Action Button */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={isExportDisabled}
+                onClick={handleExport}
+                className="h-9 px-4 text-xs font-semibold gap-2 shadow-md bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <Download className="h-4 w-4" />
+                <span>Export Bundle ({totalScreenshots} PNG{totalScreenshots === 1 ? "" : "s"})</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Quick Summary Pill Bar */}
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-1.5 text-xs">
+            <div className="flex items-center gap-2 text-muted-foreground font-medium">
+              <span className="flex items-center gap-1 text-foreground">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <strong>{totalScreenshots} PNGs total</strong>
+              </span>
+              <span>•</span>
+              <span>{selectedTargets.length} device{selectedTargets.length === 1 ? "" : "s"}</span>
+              <span>•</span>
+              <span>{selectedSlideIds.length} screen{selectedSlideIds.length === 1 ? "" : "s"}</span>
+              <span>•</span>
+              <span>{selectedLocales.length} locale{selectedLocales.length === 1 ? "" : "s"}</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-primary hover:text-primary font-medium"
+                onClick={selectRecommendedTargets}
+              >
+                Recommended
+              </Button>
+              <span className="text-[11px] text-muted-foreground">•</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={selectAllTargets}
+              >
+                Select all
+              </Button>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="max-h-[calc(90vh-140px)] overflow-y-auto px-6 py-5 space-y-6">
-          {/* 1. Target Platforms & Devices */}
-          <div className="space-y-3">
+        {/* Scrollable Content Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
+          {/* Pre-flight Warnings */}
+          {missingScreenshotsCount > 0 && (
+            <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 py-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <AlertDescription className="text-xs">
+                <strong>Notice:</strong> {missingScreenshotsCount} of the selected screens will export with empty device frames.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* 1. Target Devices (iPhone 6.9" & iPad Pro 13") */}
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                1. Target Platforms & Store Sizes
+                1. Target Devices
               </Label>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={selectRecommendedTargets}
-                  className="text-xs text-primary font-medium hover:underline"
-                >
-                  Recommended
-                </button>
-                <span className="text-xs text-muted-foreground">•</span>
-                <button
-                  type="button"
-                  onClick={selectAllTargets}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Select all
-                </button>
-              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {/* Apple App Store */}
-              <div className="rounded-lg border bg-card/60 p-3 space-y-2.5">
-                <div className="flex items-center gap-1.5 pb-1 border-b text-xs font-semibold text-foreground">
-                  <Apple className="h-4 w-4" />
-                  <span>Apple App Store (iOS)</span>
-                </div>
-                <div className="space-y-2">
-                  {iosTargets.map((target) => {
-                    const isChecked = selectedTargetIds.includes(target.id);
-                    return (
-                      <div
-                        key={target.id}
-                        onClick={() => toggleTarget(target.id)}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-3 rounded-md border p-2.5 transition-colors",
-                          isChecked
-                            ? "border-primary/50 bg-primary/5 shadow-xs"
-                            : "border-border/60 hover:bg-muted/40",
-                        )}
-                      >
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={() => toggleTarget(target.id)}
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1.5">
-                            <span className="text-xs font-semibold leading-none truncate">
-                              {target.name}
-                            </span>
-                            {target.badge && (
-                              <span
-                                className={cn(
-                                  "rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
-                                  target.recommended
-                                    ? "bg-primary/15 text-primary"
-                                    : "bg-muted text-muted-foreground",
-                                )}
-                              >
-                                {target.badge}
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {target.description}
-                          </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {EXPORT_TARGETS.map((target) => {
+                const isChecked = selectedTargetIds.includes(target.id);
+                const IconComponent = target.category === "ipad" ? Tablet : Smartphone;
+                return (
+                  <Card
+                    key={target.id}
+                    onClick={() => toggleTarget(target.id)}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 p-3 shadow-none transition-all",
+                      isChecked
+                        ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                        : "border-border/80 hover:bg-muted/40",
+                    )}
+                  >
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={() => toggleTarget(target.id)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <IconComponent className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-xs font-semibold leading-none truncate">
+                            {target.name}
+                          </span>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Google Play Store */}
-              <div className="rounded-lg border bg-card/60 p-3 space-y-2.5">
-                <div className="flex items-center gap-1.5 pb-1 border-b text-xs font-semibold text-foreground">
-                  <Smartphone className="h-4 w-4" />
-                  <span>Google Play Store (Android)</span>
-                </div>
-                <div className="space-y-2">
-                  {androidTargets.map((target) => {
-                    const isChecked = selectedTargetIds.includes(target.id);
-                    return (
-                      <div
-                        key={target.id}
-                        onClick={() => toggleTarget(target.id)}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-3 rounded-md border p-2.5 transition-colors",
-                          isChecked
-                            ? "border-primary/50 bg-primary/5 shadow-xs"
-                            : "border-border/60 hover:bg-muted/40",
+                        {target.badge && (
+                          <Badge
+                            variant={target.recommended ? "default" : "secondary"}
+                            className="px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide shrink-0"
+                          >
+                            {target.badge}
+                          </Badge>
                         )}
-                      >
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={() => toggleTarget(target.id)}
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1.5">
-                            <span className="text-xs font-semibold leading-none truncate">
-                              {target.name}
-                            </span>
-                            {target.badge && (
-                              <span
-                                className={cn(
-                                  "rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
-                                  target.recommended
-                                    ? "bg-primary/15 text-primary"
-                                    : "bg-muted text-muted-foreground",
-                                )}
-                              >
-                                {target.badge}
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {target.description}
-                          </p>
-                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {target.description}
+                      </p>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           </div>
 
-          {/* 2. Locales & Screens Row */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* Locales */}
-            <div className="rounded-lg border bg-card/60 p-3 space-y-2.5">
-              <div className="flex items-center justify-between pb-1 border-b">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                  <Globe className="h-4 w-4" />
-                  <span>Locales ({selectedLocales.length}/{locales.length})</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={selectAllLocales}
-                    className="text-[11px] text-primary font-medium hover:underline"
-                  >
-                    All
-                  </button>
-                  <span className="text-[11px] text-muted-foreground">•</span>
-                  <button
-                    type="button"
-                    onClick={selectOnlyCurrentLocale}
-                    className="text-[11px] text-muted-foreground hover:text-foreground"
-                  >
-                    Current only
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {locales.map((loc) => {
-                  const isChecked = selectedLocales.includes(loc);
-                  return (
-                    <button
-                      key={loc}
-                      type="button"
-                      onClick={() => toggleLocale(loc)}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
-                        isChecked
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-input bg-background hover:bg-muted text-foreground",
-                      )}
-                    >
-                      {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
-                      <span>{getLocaleLabel(loc)}</span>
-                      <span className={cn("text-[10px] opacity-80 uppercase font-mono")}>
-                        ({loc})
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Packaging / Folder Structure */}
-            <div className="rounded-lg border bg-card/60 p-3 space-y-2.5">
-              <div className="flex items-center gap-1.5 pb-1 border-b text-xs font-semibold text-foreground">
-                <FolderTree className="h-4 w-4" />
-                <span>Folder Packaging Preset</span>
-              </div>
-              <div className="space-y-1.5 pt-1">
-                <Select
-                  value={folderPreset}
-                  onValueChange={(v) => setFolderPreset(v as FolderPreset)}
-                >
-                  <SelectTrigger className="h-8 text-xs font-medium">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="standard" className="text-xs">
-                      Standard Store Layout (by platform & device)
-                    </SelectItem>
-                    <SelectItem value="fastlane" className="text-xs">
-                      Fastlane Deliver & Supply Preset (CI/CD)
-                    </SelectItem>
-                    <SelectItem value="flat" className="text-xs">
-                      Flat ZIP (all files in root with prefixes)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  {folderPreset === "standard" &&
-                    "Organizes files into ios/iphone-6.9/en/01-hero.png & android/phone/en/01-hero.png"}
-                  {folderPreset === "fastlane" &&
-                    "Outputs directly into fastlane/screenshots/ and fastlane/metadata/ for automated delivery."}
-                  {folderPreset === "flat" &&
-                    "Puts all PNG files together in a single folder with standardized names."}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. Screens Selection */}
-          <div className="rounded-lg border bg-card/60 p-3 space-y-2.5">
+          {/* 2. Screens to Include (Moved ABOVE Locales) */}
+          <Card className="space-y-2 bg-card/60 p-3 shadow-none border-border/80">
             <div className="flex items-center justify-between pb-1 border-b">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                <Layers className="h-4 w-4" />
-                <span>Screens to Include ({selectedSlideIds.length}/{slides.length})</span>
+                <Layers className="h-4 w-4 text-muted-foreground" />
+                <span>2. Screens to Include ({selectedSlideIds.length}/{slides.length})</span>
               </div>
-              <button
+              <Button
                 type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-[11px]"
                 onClick={selectAllSlides}
-                className="text-[11px] text-primary font-medium hover:underline"
               >
                 Select all
-              </button>
+              </Button>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6 pt-1">
               {slides.map((slide, idx) => {
                 const isChecked = selectedSlideIds.includes(slide.id);
                 const isMissing = slide.layout !== "no-device" && !slide.screenshot;
                 return (
-                  <button
+                  <Button
                     key={slide.id}
                     type="button"
+                    variant="outline"
                     onClick={() => toggleSlide(slide.id)}
+                    aria-pressed={isChecked}
                     className={cn(
-                      "flex flex-col items-start gap-1 rounded-md border p-2 text-left transition-all",
+                      "h-auto flex-col items-start gap-1 p-2 text-left transition-all",
                       isChecked
                         ? "border-primary/60 bg-primary/5 shadow-xs"
-                        : "border-border opacity-60 hover:opacity-100",
+                        : "opacity-60 hover:opacity-100",
                     )}
                   >
                     <div className="flex w-full items-center justify-between">
@@ -451,29 +346,148 @@ export function ExportDialog({
                       {slide.layout.replace("-", " ")}
                     </span>
                     {isMissing && (
-                      <span className="text-[9px] text-amber-500 font-semibold flex items-center gap-0.5">
+                      <span className="flex items-center gap-0.5 text-[9px] font-semibold text-amber-500">
                         <AlertTriangle className="h-2.5 w-2.5" /> No screenshot
                       </span>
                     )}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
-          </div>
+          </Card>
 
-          {/* Pre-flight Warnings */}
-          {missingScreenshotsCount > 0 && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span>
-                <strong>Notice:</strong> {missingScreenshotsCount} of the selected screens will export with empty device frames.
-              </span>
-            </div>
-          )}
+          {/* 3. Locales & Folder Packaging Preset Row (Balanced & Compact) */}
+          <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+            {/* Locales */}
+            <Card className="flex flex-col space-y-2 bg-card/60 p-3 shadow-none border-border/80">
+              <div className="flex items-center justify-between pb-1 border-b">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                  <span>3. Locales ({selectedLocales.length}/{locales.length})</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-[11px]"
+                    onClick={selectAllLocales}
+                  >
+                    All
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">•</span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-[11px] text-muted-foreground"
+                    onClick={selectOnlyCurrentLocale}
+                  >
+                    Current only
+                  </Button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto flex flex-wrap content-start gap-1.5 pt-1">
+                {locales.map((loc) => {
+                  const isChecked = selectedLocales.includes(loc);
+                  return (
+                    <Button
+                      key={loc}
+                      type="button"
+                      variant={isChecked ? "default" : "outline"}
+                      size="sm"
+                      className="h-7 gap-1.5 px-2 text-xs"
+                      onClick={() => toggleLocale(loc)}
+                      aria-pressed={isChecked}
+                    >
+                      {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
+                      {getLocaleLabel(loc)}
+                      <span className="font-mono text-[10px] uppercase opacity-80">
+                        ({loc})
+                      </span>
+                    </Button>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* Packaging / Folder Structure (Radio Buttons) */}
+            <Card className="space-y-2 bg-card/60 p-3 shadow-none border-border/80">
+              <div className="flex items-center gap-1.5 pb-1 border-b text-xs font-semibold text-foreground">
+                <FolderTree className="h-4 w-4 text-muted-foreground" />
+                <span>4. Folder Packaging Preset</span>
+              </div>
+              <RadioGroup
+                value={folderPreset}
+                onValueChange={(v) => setFolderPreset(v as FolderPreset)}
+                className="gap-2 pt-1"
+              >
+                <div
+                  onClick={() => setFolderPreset("standard")}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2.5 rounded-md border p-2 text-xs transition-colors",
+                    folderPreset === "standard"
+                      ? "border-primary bg-primary/5"
+                      : "border-border/70 hover:bg-muted/40",
+                  )}
+                >
+                  <RadioGroupItem value="standard" id="preset-standard" className="mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <Label htmlFor="preset-standard" className="cursor-pointer font-semibold text-xs leading-none">
+                      Standard Store Layout
+                    </Label>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Organized as <code>apple/iphone-6.9/en/01.png</code>
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setFolderPreset("fastlane")}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2.5 rounded-md border p-2 text-xs transition-colors",
+                    folderPreset === "fastlane"
+                      ? "border-primary bg-primary/5"
+                      : "border-border/70 hover:bg-muted/40",
+                  )}
+                >
+                  <RadioGroupItem value="fastlane" id="preset-fastlane" className="mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <Label htmlFor="preset-fastlane" className="cursor-pointer font-semibold text-xs leading-none">
+                      Fastlane Deliver Preset
+                    </Label>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Ready for automated CI/CD: <code>fastlane/screenshots/en/...</code>
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setFolderPreset("flat")}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2.5 rounded-md border p-2 text-xs transition-colors",
+                    folderPreset === "flat"
+                      ? "border-primary bg-primary/5"
+                      : "border-border/70 hover:bg-muted/40",
+                  )}
+                >
+                  <RadioGroupItem value="flat" id="preset-flat" className="mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <Label htmlFor="preset-flat" className="cursor-pointer font-semibold text-xs leading-none">
+                      Flat ZIP Archive
+                    </Label>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      All PNGs in a single root folder with prefixed filenames
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </Card>
+          </div>
         </div>
 
-        {/* Footer */}
-        <DialogFooter className="flex flex-col gap-2 border-t bg-muted/20 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Fixed Footer with Actions */}
+        <DialogFooter className="shrink-0 flex flex-col gap-2 border-t bg-card/80 px-6 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -504,12 +518,7 @@ export function ExportDialog({
             <Button
               type="button"
               size="sm"
-              disabled={
-                selectedTargetIds.length === 0 ||
-                selectedLocales.length === 0 ||
-                selectedSlideIds.length === 0 ||
-                !!exporting
-              }
+              disabled={isExportDisabled}
               onClick={handleExport}
               className="h-8 text-xs font-semibold gap-1.5 shadow-sm"
             >

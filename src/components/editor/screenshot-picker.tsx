@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Image as ImageIcon, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { didFail, img, setImage } from "@/lib/image-cache";
 import { resolveScreenshot } from "@/lib/locale";
 
@@ -96,9 +97,9 @@ export function ScreenshotPicker({ label, value, locale, onChange }: Props) {
 
   return (
     <div className="space-y-1">
-      <div
-        className={`flex items-center gap-3 rounded-md border p-2 transition-colors ${
-          dragging ? "border-primary bg-accent ring-2 ring-primary/30" : "border-input"
+      <Card
+        className={`flex items-center gap-3 p-2 transition-colors ${
+          dragging ? "border-primary bg-accent ring-2 ring-primary/30" : ""
         }`}
         onDragOver={(e) => {
           e.preventDefault();
@@ -172,7 +173,7 @@ export function ScreenshotPicker({ label, value, locale, onChange }: Props) {
             <X className="h-4 w-4" />
           </Button>
         )}
-      </div>
+      </Card>
       {error ? (
         <p className="text-[11px] text-destructive">{error}</p>
       ) : knownMissing ? (
