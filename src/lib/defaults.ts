@@ -10,6 +10,9 @@ export function nid(): string {
 export const DEFAULT_HEADLINE_FONT = "Nunito";
 export const DEFAULT_LABEL_FONT = "Inter";
 
+// Default screen background: the theme gradient.
+export const DEFAULT_BACKGROUND = { kind: "theme" } as const;
+
 function en(text: string): Record<string, string> {
   return { en: text };
 }
@@ -76,6 +79,7 @@ export const DEFAULT_PROJECT: ProjectState = {
   orientation: "portrait",
   headlineFont: DEFAULT_HEADLINE_FONT,
   labelFont: DEFAULT_LABEL_FONT,
+  background: { ...DEFAULT_BACKGROUND },
   slidesByDevice: {
     iphone: makeStarterSlides("iphone"),
     ipad: makeStarterSlides("ipad"),
@@ -97,6 +101,7 @@ export function makeEmptyProject(): ProjectState {
     orientation: "portrait",
     headlineFont: DEFAULT_HEADLINE_FONT,
     labelFont: DEFAULT_LABEL_FONT,
+    background: { ...DEFAULT_BACKGROUND },
     slidesByDevice: { iphone: [], ipad: [] },
   };
 }

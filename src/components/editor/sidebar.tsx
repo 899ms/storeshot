@@ -18,7 +18,7 @@ import {
 import { ImagePlus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { Device, Orientation, Slide, Theme } from "@/lib/types";
+import type { Device, Orientation, ScreenBackground, Slide, Theme } from "@/lib/types";
 import { newSlide } from "@/lib/defaults";
 import { SlideThumb } from "./slide-thumb";
 
@@ -34,6 +34,7 @@ type Props = {
   connectedCanvas: boolean;
   headlineFont?: string;
   labelFont?: string;
+  background?: ScreenBackground;
   disabled?: boolean;
   onReorder: (next: Slide[]) => void;
   onSelect: (id: string) => void;
@@ -54,6 +55,7 @@ export function Sidebar({
   connectedCanvas,
   headlineFont,
   labelFont,
+  background,
   disabled,
   onReorder,
   onSelect,
@@ -104,6 +106,7 @@ export function Sidebar({
                   connectedCanvas={connectedCanvas}
                   headlineFont={headlineFont}
                   labelFont={labelFont}
+                  background={background}
                   onSelect={() => onSelect(slide.id)}
                   onDelete={() => onDelete(slide.id)}
                   onDuplicate={() => onDuplicate(slide.id)}

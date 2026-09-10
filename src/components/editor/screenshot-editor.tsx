@@ -29,6 +29,7 @@ import type {
   Device,
   ElementId,
   ElementTransform,
+  ScreenBackground,
   SelectedElement,
   Slide,
 } from "@/lib/types";
@@ -185,6 +186,7 @@ export function ScreenshotEditor() {
   const assetPaths = React.useMemo(() => {
     const paths = new Set<string>();
     if (state.appIcon) paths.add(state.appIcon);
+    for (const bg of backgroundImagePaths(state.background)) paths.add(bg);
     // Preload locale variants for the current device only. Preloading every
     // device's slides fetched URLs that may not exist (e.g. empty iPad asset
     // folders) and spammed the console with 404s for locales/devices the user
@@ -199,9 +201,10 @@ export function ScreenshotEditor() {
           paths.add(raw);
         }
       }
+      for (const bg of backgroundImagePaths(s.background)) paths.add(bg);
     }
     return Array.from(paths).sort();
-  }, [state.slidesByDevice, state.appIcon, state.locales, state.device]);
+  }, [state.slidesByDevice, state.appIcon, state.background, state.locales, state.device]);
   const assetSig = assetPaths.join("|");
 
   React.useEffect(() => {
@@ -583,6 +586,7 @@ export function ScreenshotEditor() {
     // assets (e.g. missing iPad files) are never fetched during export.
     const exportPaths: string[] = [];
     if (state.appIcon) exportPaths.push(state.appIcon);
+    exportPaths.push(...backgroundImagePaths(state.background));
     for (const s of selectedSlides) {
       for (const raw of [s.screenshot, s.screenshotSecondary]) {
         if (!raw || raw.startsWith("data:")) continue;
@@ -592,6 +596,7 @@ export function ScreenshotEditor() {
           exportPaths.push(raw);
         }
       }
+      exportPaths.push(...backgroundImagePaths(s.background ?? state.background));
     }
     await preloadImages(exportPaths, { retryFailed: true });
     await waitForPaint();
@@ -949,6 +954,8 @@ export function ScreenshotEditor() {
         }
         onHeadlineFontChange={(family) => setState((p) => ({ ...p, headlineFont: family }))}
         onLabelFontChange={(family) => setState((p) => ({ ...p, labelFont: family }))}
+        background={state.background}
+        onBackgroundChange={(background) => setState((p) => ({ ...p, background }))}
       />
 
       <TranslateDialog
@@ -1017,6 +1024,7 @@ export function ScreenshotEditor() {
             connectedCanvas={state.connectedCanvas}
             headlineFont={state.headlineFont}
             labelFont={state.labelFont}
+            background={state.background}
             disabled={busy}
             onReorder={reorderSlides}
             onSelect={setActiveSlideId}
@@ -1041,6 +1049,7 @@ export function ScreenshotEditor() {
               selectedElement={selectedElement}
               headlineFont={state.headlineFont}
               labelFont={state.labelFont}
+              background={state.background}
               onActiveSlideChange={setActiveSlideId}
               onLabelChange={(slide, v) => patchLocalized(slide, "label", v)}
               onHeadlineChange={(slide, v) => patchLocalized(slide, "headline", v)}
@@ -1144,6 +1153,7 @@ export function ScreenshotEditor() {
                 connectedCanvas={state.connectedCanvas}
                 headlineFont={state.headlineFont}
                 labelFont={state.labelFont}
+                background={state.background}
                 hideEmpty
               />
             </div>
@@ -1169,6 +1179,13 @@ function slugify(s: string) {
 
 function slideNeedsScreenshot(_device: Device, slide: Slide) {
   return slide.layout !== "no-device";
+}
+
+// Workspace file paths used by image backgrounds (project default or
+// per-screen override). Data URLs and empty sources need no preload.
+function backgroundImagePaths(bg: ScreenBackground | undefined): string[] {
+  if (bg?.kind === "image" && bg.src && !bg.src.startsWith("data:")) return [bg.src];
+  return [];
 }
 
 function stamp() {

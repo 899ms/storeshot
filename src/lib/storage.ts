@@ -3,13 +3,40 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PROJECT_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
 import { DEFAULT_PROJECT, makeEmptyProject } from "./defaults";
 import { coerceLocalized } from "./locale";
-import type { Device, ElementTransform, ProjectState, Slide, TextElement } from "./types";
+import type { Device, ElementTransform, ProjectState, ScreenBackground, Slide, TextElement } from "./types";
 
 const HISTORY_LIMIT = 50;
 // Coalesce rapid edits (typing, slider drags) into a single undo step.
 const COALESCE_MS = 500;
 // Debounce file/localStorage writes — frequent enough to feel instant, infrequent enough not to thrash disk.
 const SAVE_DEBOUNCE_MS = 600;
+
+function cleanHex(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const v = value.trim();
+  return /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(v) ? v : undefined;
+}
+
+// Normalize a persisted background value. Unknown shapes, empty image
+// sources, and bad colors fall back to the theme background so old and
+// hand-edited project files always render.
+function cleanBackground(value: unknown): ScreenBackground | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as Partial<ScreenBackground> & { colors?: unknown; src?: unknown };
+  if (raw.kind === "mesh") {
+    const colors = Array.isArray(raw.colors)
+      ? raw.colors.map(cleanHex).filter((c): c is string => !!c)
+      : [];
+    if (colors.length < 2) return undefined;
+    return { kind: "mesh", colors: colors.slice(0, 4) };
+  }
+  if (raw.kind === "image") {
+    if (typeof raw.src !== "string" || !raw.src.trim()) return undefined;
+    return { kind: "image", src: raw.src };
+  }
+  if (raw.kind === "theme") return { kind: "theme" };
+  return undefined;
+}
 
 function cleanTransform(value: unknown): ElementTransform | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -73,6 +100,7 @@ function migrateSlide(slide: Slide): Slide {
     headline: coerceLocalized(slide.headline as unknown),
     ...(transforms && Object.keys(transforms).length > 0 ? { transforms } : { transforms: undefined }),
     ...(textElements && textElements.length > 0 ? { textElements } : { textElements: undefined }),
+    background: cleanBackground(slide.background),
   };
 }
 
@@ -101,6 +129,7 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     themeId,
     connectedCanvas,
+    background: cleanBackground(parsed.background) ?? { ...DEFAULT_PROJECT.background },
     device: parsed.device === "ipad" || parsed.device === "iphone" ? parsed.device : "iphone",
     orientation: "portrait",
     slidesByDevice: {

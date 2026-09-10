@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LAYOUT_LABEL } from "@/lib/constants";
 import { pickText } from "@/lib/locale";
-import type { Device, Orientation, Slide, Theme } from "@/lib/types";
+import type { Device, Orientation, ScreenBackground, Slide, Theme } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DeckCanvas, SlideCanvas, getCanvas } from "./slide-canvas";
 
@@ -25,6 +25,7 @@ type Props = {
   connectedCanvas: boolean;
   headlineFont?: string;
   labelFont?: string;
+  background?: ScreenBackground;
   onSelect: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -47,6 +48,7 @@ export function SlideThumb({
   connectedCanvas,
   headlineFont,
   labelFont,
+  background,
   onSelect,
   onDelete,
   onDuplicate,
@@ -128,6 +130,7 @@ export function SlideThumb({
                 editable={false}
                 headlineFont={headlineFont}
                 labelFont={labelFont}
+                background={background}
               />
             ) : (
               <SlideCanvas
@@ -141,6 +144,7 @@ export function SlideThumb({
                 editable={false}
                 headlineFont={headlineFont}
                 labelFont={labelFont}
+                background={background}
               />
             )}
           </div>

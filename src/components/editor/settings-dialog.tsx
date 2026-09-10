@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Check, FlaskConical, Globe, KeyRound, Plus, Trash2, Type } from "lucide-react";
+import { Check, FlaskConical, Globe, Image as ImageIcon, KeyRound, Plus, Trash2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -29,6 +29,8 @@ import {
 } from "@/lib/app-settings";
 import { getLocaleFlag, getLocaleLabel, LOCALE_NAMES } from "@/lib/locale";
 import { CURATED_FONTS, ensurePreviewFonts, fontStack } from "@/lib/fonts";
+import type { ScreenBackground } from "@/lib/types";
+import { BackgroundEditor } from "./background-controls";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -38,11 +40,13 @@ type Props = {
   currentLocale: string;
   headlineFont: string;
   labelFont: string;
+  background: ScreenBackground;
   disabled?: boolean;
   onAddLocale: (locale: string) => void;
   onRemoveLocale: (locale: string) => void;
   onHeadlineFontChange: (family: string) => void;
   onLabelFontChange: (family: string) => void;
+  onBackgroundChange: (background: ScreenBackground) => void;
 };
 
 export function SettingsDialog({
@@ -52,11 +56,13 @@ export function SettingsDialog({
   currentLocale,
   headlineFont,
   labelFont,
+  background,
   disabled,
   onAddLocale,
   onRemoveLocale,
   onHeadlineFontChange,
   onLabelFontChange,
+  onBackgroundChange,
 }: Props) {
   const { settings, setSettings, patchProvider, addProvider, removeProvider } =
     useAppSettings();
@@ -67,7 +73,7 @@ export function SettingsDialog({
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle className="text-base font-bold">Settings</DialogTitle>
           <DialogDescription className="text-xs">
-            Providers, model, fonts, and project languages. API keys stay in this browser only.
+            Providers, model, fonts, backgrounds, and project languages. API keys stay in this browser only.
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="providers" className="flex min-h-0 flex-1 flex-col">
@@ -81,6 +87,9 @@ export function SettingsDialog({
               </TabsTrigger>
               <TabsTrigger value="fonts" className="gap-1.5 text-xs">
                 <Type className="h-3.5 w-3.5" /> Fonts
+              </TabsTrigger>
+              <TabsTrigger value="background" className="gap-1.5 text-xs">
+                <ImageIcon className="h-3.5 w-3.5" /> Background
               </TabsTrigger>
               <TabsTrigger value="locales" className="gap-1.5 text-xs">
                 <Globe className="h-3.5 w-3.5" /> Locales ({locales.length})
@@ -121,6 +130,14 @@ export function SettingsDialog({
                 onHeadlineFontChange={onHeadlineFontChange}
                 onLabelFontChange={onLabelFontChange}
               />
+            </TabsContent>
+            <TabsContent value="background" className="mt-0 space-y-3">
+              <BackgroundEditor value={background} onChange={(v) => v && onBackgroundChange(v)} />
+              <p className="text-[11px] text-muted-foreground">
+                Default for all screens. A screen can override this in Screen settings →
+                Background. Tip: use the screen&apos;s dark/light toggle for readable text on
+                custom backgrounds.
+              </p>
             </TabsContent>
             <TabsContent value="locales" className="mt-0 space-y-3">
               <LocalesTab

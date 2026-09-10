@@ -57,6 +57,7 @@ import type {
   TextElement,
 } from "@/lib/types";
 import { ScreenshotPicker } from "./screenshot-picker";
+import { BackgroundEditor } from "./background-controls";
 import { getCanvas, getElementTransform } from "./slide-canvas";
 
 type Props = {
@@ -166,6 +167,12 @@ export function Inspector({
             </SelectContent>
           </Select>
         </div>
+
+        <BackgroundEditor
+          value={slide.background}
+          showDefault
+          onChange={(background) => onChange({ background })}
+        />
 
         {!isStatic && (
           <div className="space-y-1.5">

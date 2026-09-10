@@ -8,6 +8,7 @@ import type {
   ElementId,
   ElementTransform,
   Orientation,
+  ScreenBackground,
   SelectedElement,
   Slide,
   TextElement,
@@ -83,6 +84,8 @@ type Props = {
   headlineFont?: string;
   /** Google Fonts family for the label + overlay texts. Defaults to Inter. */
   labelFont?: string;
+  /** Project default background. A per-screen Slide.background wins. */
+  background?: ScreenBackground;
 };
 
 type DeckEditHandlers = {
@@ -114,6 +117,8 @@ type DeckCanvasProps = {
   headlineFont?: string;
   /** Google Fonts family for the label + overlay texts. Defaults to Inter. */
   labelFont?: string;
+  /** Project default background. A per-screen Slide.background wins. */
+  background?: ScreenBackground;
 };
 
 // ---------- Editable text helpers ----------
@@ -497,6 +502,7 @@ export function SlideCanvas({
   hideEmpty,
   headlineFont,
   labelFont,
+  background,
 }: Props) {
   const { cW, cH } = getCanvas(device, orientation);
 
@@ -516,7 +522,7 @@ export function SlideCanvas({
         overflow: "hidden",
       }}
     >
-      <SlideBackground slide={slide} cW={cW} cH={cH} theme={theme} />
+            <SlideBackground slide={slide} background={slide.background ?? background} cW={cW} cH={cH} theme={theme} />
       <SlideElements
         slide={slide}
         device={device}
@@ -559,6 +565,7 @@ export function DeckCanvas({
   showGuides = false,
   headlineFont,
   labelFont,
+  background,
 }: DeckCanvasProps) {
   const { cW, cH } = getCanvas(device, orientation);
   const totalW = Math.max(1, slides.length) * cW;
@@ -592,7 +599,7 @@ export function DeckCanvas({
               overflow: "hidden",
             }}
           >
-            <SlideBackground slide={slide} cW={cW} cH={cH} theme={theme} />
+      <SlideBackground slide={slide} background={slide.background ?? background} cW={cW} cH={cH} theme={theme} />
             {showGuides && <ScreenGuide cW={cW} cH={cH} index={index} active={active} />}
           </div>
         );
@@ -658,16 +665,58 @@ export function DeckCanvas({
 
 function SlideBackground({
   slide,
+  background,
   cW,
   cH,
   theme,
 }: {
   slide: Slide;
+  background?: ScreenBackground;
   cW: number;
   cH: number;
   theme: Theme;
 }) {
   const inverted = !!slide.inverted;
+  const bg = background ?? slide.background ?? { kind: "theme" as const };
+  const textColor = inverted ? theme.fgAlt : theme.fg;
+  if (bg.kind === "image" && bg.src) {
+    const src = img(bg.src);
+    if (src) {
+      return (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            overflow: "hidden",
+            background: "#000",
+            color: textColor,
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
+          />
+        </div>
+      );
+    }
+    // Unresolvable image falls through to the theme background.
+  }
+  if (bg.kind === "mesh" && bg.colors.length >= 2) {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          overflow: "hidden",
+          background: meshBackground(bg.colors),
+          color: textColor,
+        }}
+      />
+    );
+  }
   return (
     <div
       style={{
@@ -682,6 +731,19 @@ function SlideBackground({
       <Blob cW={cW} color={theme.accent} x={70} y={75} size={45} opacity={inverted ? 0.18 : 0.25} />
     </div>
   );
+}
+
+// Layered radial gradients over a darkened base — the classic mesh look.
+export function meshBackground(colors: string[]): string {
+  const [c0, c1 = c0, c2 = c0] = colors;
+  const c3 = colors[3] ?? c1;
+  const base = shade(c0, -14);
+  return [
+    `radial-gradient(at 12% 6%, ${c1} 0%, transparent 55%)`,
+    `radial-gradient(at 88% 14%, ${c2} 0%, transparent 52%)`,
+    `radial-gradient(at 50% 105%, ${c3} 0%, transparent 60%)`,
+    `linear-gradient(160deg, ${base} 0%, ${shade(base, -10)} 100%)`,
+  ].join(", ");
 }
 
 function ScreenGuide({

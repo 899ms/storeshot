@@ -10,6 +10,7 @@ import type {
   ElementId,
   ElementTransform,
   Orientation,
+  ScreenBackground,
   SelectedElement,
   Slide,
   Theme,
@@ -29,6 +30,7 @@ type Props = {
   selectedElement: SelectedElement | null;
   headlineFont?: string;
   labelFont?: string;
+  background?: ScreenBackground;
   onActiveSlideChange: (id: string) => void;
   onLabelChange: (slide: Slide, v: string) => void;
   onHeadlineChange: (slide: Slide, v: string) => void;
@@ -52,6 +54,7 @@ export function PreviewStage({
   selectedElement,
   headlineFont,
   labelFont,
+  background,
   onActiveSlideChange,
   onLabelChange,
   onHeadlineChange,
@@ -152,6 +155,7 @@ export function PreviewStage({
               showGuides
               headlineFont={headlineFont}
               labelFont={labelFont}
+              background={background}
               edit={{
                 onLabelChange: (slideId, value) => {
                   const slide = slides.find((s) => s.id === slideId);

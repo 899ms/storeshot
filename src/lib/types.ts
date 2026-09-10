@@ -13,6 +13,14 @@ export type SlideLayout =
   | "no-device"        // big headline + decorative blob, no device
   | "static";          // full-bleed image only, no frames or texts
 
+// Screen background. "theme" is the default gradient + accent blobs derived
+// from the active theme; "mesh" is a multi-color mesh gradient; "image" is a
+// cover-fit background image (workspace-relative path or data URL).
+export type ScreenBackground =
+  | { kind: "theme" }
+  | { kind: "mesh"; colors: string[] }
+  | { kind: "image"; src: string };
+
 // Per-element rect in canvas pixel space. Optional rotation in degrees and zIndex.
 export type ElementTransform = {
   x: number;
@@ -59,6 +67,8 @@ export type Slide = {
   // Per-element overrides; when present, replaces layout default placement.
   transforms?: Partial<Record<BuiltInElementId, ElementTransform>>;
   textElements?: TextElement[];
+  // Per-screen background override. Absent = use the project default.
+  background?: ScreenBackground;
 };
 
 export type ThemeId =
@@ -98,5 +108,7 @@ export type ProjectState = {
   // Nunito, the small label above it and overlay text elements to Inter.
   headlineFont: string;
   labelFont: string;
+  // Default screen background. Screens can override via Slide.background.
+  background: ScreenBackground;
   appIcon?: string;    // workspace-relative path (e.g. uploads/app-icon.png) or absolute /…
 };
