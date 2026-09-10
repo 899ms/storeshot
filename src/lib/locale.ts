@@ -115,6 +115,57 @@ export function getLocaleLabel(locale: string): string {
   return LOCALE_NAMES[locale] ? `${locale} · ${LOCALE_NAMES[locale]}` : locale.toUpperCase();
 }
 
+// Which store an export bundle is headed to. Apple and Google use
+// different locale codes for several languages (e.g. Slovenian is sl-SI
+// on App Store Connect but sl on Google Play).
+export type StoreKind = "apple" | "google";
+
+// Folders emitted into export bundles follow App Store Connect locale codes,
+// which differ from the internal code in a few cases.
+const ASC_FOLDER_OVERRIDES: Record<string, string> = {
+  sl: "sl-SI",
+};
+
+// Google Play store-listing locale codes (BCP-47, per Play Console language
+// table, June 2026). Only locales this project supports are listed —
+// anything else passes through unchanged.
+const GOOGLE_FOLDER_OVERRIDES: Record<string, string> = {
+  "ar-SA": "ar",
+  cs: "cs-CZ",
+  da: "da-DK",
+  el: "el-GR",
+  // Play has no es-MX listing locale; Mexican Spanish ships under the
+  // Latin America aggregate.
+  "es-MX": "es-419",
+  fi: "fi-FI",
+  he: "iw-IL",
+  hi: "hi-IN",
+  hu: "hu-HU",
+  it: "it-IT",
+  ja: "ja-JP",
+  ko: "ko-KR",
+  no: "no-NO",
+  pl: "pl-PL",
+  ru: "ru-RU",
+  sv: "sv-SE",
+  tr: "tr-TR",
+  "zh-Hans": "zh-CN",
+  "zh-Hant": "zh-TW",
+};
+
+// Internal source codes that are not valid App Store locales. "en" is the
+// editing/translation source only — the store accepts en-US, en-GB, en-AU
+// and en-CA instead — so it is never exported.
+const NON_STORE_LOCALES = new Set(["en"]);
+
+// Upload folder for a locale on the given store, or null when the locale
+// must not be exported.
+export function exportFolderForLocale(locale: string, store: StoreKind = "apple"): string | null {
+  if (NON_STORE_LOCALES.has(locale)) return null;
+  if (store === "google") return GOOGLE_FOLDER_OVERRIDES[locale] ?? locale;
+  return ASC_FOLDER_OVERRIDES[locale] ?? locale;
+}
+
 // Read the value for `locale` from a localized field. Falls back to en, then to
 // the first locale that has a non-empty value, then to empty string. Used by
 // the canvas/preview/thumb so switching to a locale the user hasn't filled in

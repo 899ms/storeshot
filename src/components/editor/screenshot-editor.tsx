@@ -13,7 +13,7 @@ import {
 import { detectPlatform, newSlide, nid } from "@/lib/defaults";
 import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/elements";
 import { preloadImages } from "@/lib/image-cache";
-import { resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
+import { exportFolderForLocale, resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
 import { reportError, useErrorLog } from "@/lib/error-log";
 import { ensureFontsLoaded } from "@/lib/fonts";
 import { useProject } from "@/lib/storage";
@@ -538,10 +538,20 @@ export function ScreenshotEditor() {
 
   // Wait two animation frames so React's render → browser layout/paint of the
   // off-screen container settles before html-to-image snapshots it. One frame
-  // is occasionally not enough on slower machines.
+  // is occasionally not enough on slower machines. The timeout fallback keeps
+  // exports moving when the tab is hidden (rAF never fires off-screen, which
+  // would otherwise stall the whole bundle with no error).
   const waitForPaint = () =>
     new Promise<void>((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallback);
+        resolve();
+      };
+      const fallback = setTimeout(finish, 500);
+      requestAnimationFrame(() => requestAnimationFrame(finish));
     });
 
   const stopExport = React.useCallback(() => {
@@ -564,7 +574,9 @@ export function ScreenshotEditor() {
       return;
     }
 
-    const locales = config.selectedLocales.filter((l) => state.locales.includes(l));
+    const locales = config.selectedLocales.filter(
+      (l) => state.locales.includes(l) && exportFolderForLocale(l) !== null,
+    );
     if (!locales.length) {
       toast.error("No locales selected");
       return;
@@ -626,53 +638,104 @@ export function ScreenshotEditor() {
 
     const { cW, cH } = getCanvas(state.device, state.orientation);
     const zip = new JSZip();
-    const totalUnits = targets.length * locales.length * targetSlideIndices.length;
-    let unit = 0;
-    let okCount = 0;
-    let failed = 0;
-    const errors: string[] = [];
-
+    // Every (locale × target × screen) combination must end up in the zip.
+    // Units are tracked by zip path so a final verification can prove
+    // completeness instead of trusting the happy path.
+    type Unit = { locale: string; target: ExportTarget; slideIdx: number; zipPath: string };
+    const units: Unit[] = [];
     for (const locale of locales) {
-      if (stopExportRef.current) break;
-      setExportLocaleOverride(locale);
-      await waitForPaint();
-
       for (const target of targets) {
-        if (stopExportRef.current) break;
         for (const slideIdx of targetSlideIndices) {
-          if (stopExportRef.current) break;
           const slide = currentSlides[slideIdx];
-          unit += 1;
-          setExporting(`${unit}/${totalUnits}`);
-          setExportSlideIndex(slideIdx);
-          await waitForPaint();
-          const el = exportRef.current;
-          if (!el) {
-            failed += 1;
-            errors.push(`${locale} ${target.name} screen ${slideIdx + 1}: render target missing`);
-            continue;
-          }
-          try {
-            const dataUrl = await captureSlide(el, cW, cH, target.w, target.h);
-            const base64 = dataUrl.split(",")[1] || "";
-            const zipPath = buildExportZipPath(
+          units.push({
+            locale,
+            target,
+            slideIdx,
+            zipPath: buildExportZipPath(
               target,
-              locale,
+              // Upload folder follows the selected store's codes
+              // (e.g. sl-SI on Apple, sl on Google Play), never the
+              // internal code.
+              exportFolderForLocale(locale, config.store) ?? locale,
               slideIdx,
               slide.layout,
               config.folderPreset,
-            );
-            zip.file(zipPath, base64, { base64: true });
-            okCount += 1;
-          } catch (e) {
-            failed += 1;
-            const msg = e instanceof Error ? e.message : String(e);
-            errors.push(`${locale} ${target.name} screen ${slideIdx + 1}: ${msg}`);
-            console.error("Export failed", { slideId: slide.id, locale, target }, e);
-          }
+            ),
+          });
         }
       }
     }
+    const totalUnits = units.length;
+    const failures = new Map<string, string>(); // zipPath -> last error
+
+    async function runUnit(u: Unit, attempts: number): Promise<void> {
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        if (stopExportRef.current) return;
+        setExportLocaleOverride(u.locale);
+        setExportSlideIndex(u.slideIdx);
+        await waitForPaint();
+        const el = exportRef.current;
+        if (!el) {
+          failures.set(u.zipPath, `${u.locale} ${u.target.name} screen ${u.slideIdx + 1}: render target missing`);
+          return;
+        }
+        try {
+          const dataUrl = await captureSlide(el, cW, cH, u.target.w, u.target.h);
+          const base64 = dataUrl.split(",")[1] || "";
+          if (!base64) throw new Error("empty render output");
+          zip.file(u.zipPath, base64, { base64: true });
+          failures.delete(u.zipPath);
+          return;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          failures.set(
+            u.zipPath,
+            `${u.locale} ${u.target.name} screen ${u.slideIdx + 1} (attempt ${attempt}/${attempts}): ${msg}`,
+          );
+          console.error("Export failed", { slideId: currentSlides[u.slideIdx]?.id, locale: u.locale, target: u.target, attempt }, e);
+        }
+      }
+    }
+
+    function unitAssetPaths(u: Unit): string[] {
+      const slide = currentSlides[u.slideIdx];
+      if (!slide) return [];
+      const paths: string[] = [];
+      for (const raw of [slide.screenshot, slide.screenshotSecondary]) {
+        if (!raw || raw.startsWith("data:")) continue;
+        paths.push(raw.includes("{locale}") ? resolveScreenshot(raw, u.locale) : raw);
+      }
+      paths.push(...backgroundImagePaths(slide.background ?? state.background));
+      return paths;
+    }
+
+    // Pass 1: render everything, 2 attempts per unit (html-to-image is flaky
+    // on full-resolution canvases).
+    let done = 0;
+    for (const u of units) {
+      if (stopExportRef.current) break;
+      done += 1;
+      setExporting(`${done}/${totalUnits}`);
+      await runUnit(u, 2);
+    }
+
+    // Pass 2: refresh assets that may have flaked, then retry every unit
+    // that is still missing — no locale ships partial.
+    if (!stopExportRef.current && failures.size > 0) {
+      const retryList = units.filter((u) => failures.has(u.zipPath));
+      let ri = 0;
+      for (const u of retryList) {
+        if (stopExportRef.current) break;
+        ri += 1;
+        setExporting(`retry ${ri}/${retryList.length}`);
+        await preloadImages(unitAssetPaths(u), { retryFailed: true });
+        await runUnit(u, 2);
+      }
+    }
+
+    const errors = [...failures.values()];
+    const failed = errors.length;
+    const okCount = totalUnits - failed;
 
     const wasStopped = stopExportRef.current;
     setExportLocaleOverride(null);
@@ -704,7 +767,11 @@ export function ScreenshotEditor() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${slugify(state.appName)}-screenshots-${config.folderPreset}-${stamp()}.zip`;
+        // A bundle missing any unit is named -partial- so it can never be
+        // mistaken for a complete export.
+        a.download = failed === 0
+          ? `${slugify(state.appName)}-screenshots-${config.folderPreset}-${stamp()}.zip`
+          : `${slugify(state.appName)}-partial-${stamp()}.zip`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       } catch (e) {
@@ -715,18 +782,29 @@ export function ScreenshotEditor() {
       }
     }
 
+    // Final verification: every expected path must be in the zip.
+    const zipPaths = new Set(Object.keys(zip.files));
+    const missingPaths = units
+      .map((u) => u.zipPath)
+      .filter((p) => !zipPaths.has(p) && okCount > 0);
+    const fullDetail = [...errors, ...missingPaths.map((p) => `${p}: missing from bundle`)];
     const summary = `${targets.length} target${targets.length === 1 ? "" : "s"} × ${locales.length} locale${locales.length === 1 ? "" : "s"} × ${targetSlideIndices.length} screen${targetSlideIndices.length === 1 ? "" : "s"}`;
-    if (failed === 0) {
+    if (failed === 0 && missingPaths.length === 0) {
       toast.success(`Exported ${okCount} PNGs (${summary})`);
     } else if (okCount === 0) {
-      reportError("export", `All ${failed} renders failed (${summary})`, errors.slice(0, 5).join("\n"));
-      toast.error(`All ${failed} renders failed`, {
-        description: errors.slice(0, 3).join("\n"),
+      reportError("export", `All ${failed} renders failed (${summary})`, fullDetail.slice(0, 40).join("\n"));
+      toast.error(`All ${failed} renders failed — nothing exported`, {
+        description: "Open the error log (bug icon, top right) for the full list.",
       });
     } else {
-      reportError("export", `${failed} of ${totalUnits} renders failed (${summary})`, errors.slice(0, 5).join("\n"));
-      toast.error(`${failed} of ${totalUnits} renders failed`, {
-        description: errors.slice(0, 3).join("\n"),
+      reportError(
+        "export",
+        `Partial export: ${failed} of ${totalUnits} renders failed (${summary})`,
+        fullDetail.slice(0, 40).join("\n"),
+      );
+      toast.error(`Partial export: ${failed} of ${totalUnits} failed`, {
+        description: "Downloaded bundle is named -partial-. Open the error log (bug icon, top right) for the full missing list, then re-export.",
+        duration: 10000,
       });
     }
   }
@@ -786,7 +864,7 @@ export function ScreenshotEditor() {
     try {
       if (sizes.length === 1) {
         const size = sizes[0];
-        const dataUrl = await captureSlide(el, cW, cH, size.w, size.h);
+        const dataUrl = await captureWithSingleRetry(el, cW, cH, size.w, size.h);
         const a = document.createElement("a");
         a.href = dataUrl;
         const num = String(idx + 1).padStart(2, "0");
@@ -796,7 +874,7 @@ export function ScreenshotEditor() {
       } else {
         const zip = new JSZip();
         for (const size of sizes) {
-          const dataUrl = await captureSlide(el, cW, cH, size.w, size.h);
+          const dataUrl = await captureWithSingleRetry(el, cW, cH, size.w, size.h);
           const base64 = dataUrl.split(",")[1] || "";
           const num = String(idx + 1).padStart(2, "0");
           const filename = `${num}-${activeSlide.layout}-${size.w}x${size.h}.png`;
@@ -820,6 +898,23 @@ export function ScreenshotEditor() {
     } finally {
       setExporting(null);
       setExportLocaleOverride(null);
+    }
+  }
+
+  async function captureWithSingleRetry(
+    el: HTMLElement,
+    sourceW: number,
+    sourceH: number,
+    exportW: number,
+    exportH: number,
+  ) {
+    try {
+      return await captureSlide(el, sourceW, sourceH, exportW, exportH);
+    } catch (e) {
+      // One retry after letting the render settle — html-to-image flakes on
+      // full-resolution canvases.
+      await waitForPaint();
+      return await captureSlide(el, sourceW, sourceH, exportW, exportH);
     }
   }
 

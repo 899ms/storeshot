@@ -1,3 +1,5 @@
+import type { StoreKind } from "./locale";
+
 export type TargetPlatform = "ios";
 
 export type ExportTarget = {
@@ -56,6 +58,7 @@ export type ExportConfig = {
   selectedLocales: string[];
   selectedSlideIds: string[];
   folderPreset: FolderPreset;
+  store: StoreKind;
   singleSlideId?: string | null;
 };
 

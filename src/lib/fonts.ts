@@ -64,13 +64,28 @@ function injectLink(id: string, href: string) {
   const link = document.createElement("link");
   link.id = id;
   link.rel = "stylesheet";
+  // Required so html-to-image can read cssRules for font embedding during
+  // export. Without it the stylesheet is opaque and snapshots silently fall
+  // back to system fonts (plus a console error from embed-webfonts).
+  // fonts.googleapis.com serves CORS headers, so anonymous mode works.
+  link.crossOrigin = "anonymous";
   link.href = href;
   document.head.appendChild(link);
+}
+
+// Drop font links injected before crossorigin support — they'd stay opaque
+// and keep breaking font embedding in exports.
+function removeLegacyFontLinks() {
+  if (typeof document === "undefined") return;
+  document.querySelectorAll('link[id^="caption-font"]').forEach((el) => {
+    if (el.getAttribute("crossorigin") !== "anonymous") el.remove();
+  });
 }
 
 // Preload every curated family so picker previews render in their own font.
 export function ensurePreviewFonts() {
   if (typeof document === "undefined") return;
+  removeLegacyFontLinks();
   injectLink("caption-fonts-preview", cssHref(CURATED_FONTS));
   injected.add("caption-fonts-preview");
 }
@@ -80,6 +95,7 @@ export function ensurePreviewFonts() {
 export async function ensureFontLoaded(family: string, timeoutMs = 6000): Promise<void> {
   if (typeof document === "undefined") return;
   const name = (family || "").trim() || "Inter";
+  removeLegacyFontLinks();
   if (!injected.has(name)) {
     injected.add(name);
     injectLink(
