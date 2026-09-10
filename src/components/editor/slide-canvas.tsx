@@ -141,6 +141,25 @@ function EditableText({
     onChange(multiline ? text : text.replace(/\n/g, ""));
   };
 
+  // Strip rich-text formatting on paste (web pages, docs, etc. carry inline
+  // font sizes that would otherwise shrink the headline). Insert as plain
+  // text so the canvas typography always wins.
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const raw = e.clipboardData.getData("text/plain");
+    if (!raw) return;
+    const clean = multiline ? raw : raw.replace(/[\r\n]+/g, " ");
+    if (document.queryCommandSupported?.("insertText")) {
+      document.execCommand("insertText", false, clean);
+    } else {
+      const sel = window.getSelection();
+      if (!sel?.rangeCount) return;
+      sel.deleteFromDocument();
+      sel.getRangeAt(0).insertNode(document.createTextNode(clean));
+      sel.collapseToEnd();
+    }
+  };
+
   return (
     <div
       ref={ref}
@@ -148,6 +167,7 @@ function EditableText({
       suppressContentEditableWarning
       data-placeholder={placeholder}
       onInput={handleInput}
+      onPaste={handlePaste}
       onFocus={() => onFocus?.()}
       onKeyDown={(e) => {
         if (!multiline && e.key === "Enter") {

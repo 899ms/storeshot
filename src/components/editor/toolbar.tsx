@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, ArrowUp, Check, ChevronRight, Cloud, Download, Folder, FolderOpen, Home, Languages, RotateCcw, Settings, Smartphone, Square, Tablet, UnfoldHorizontal, X } from "lucide-react";
+import { AlertTriangle, ArrowUp, Bug, Check, ChevronRight, Cloud, Download, Folder, FolderOpen, Home, Languages, Loader2, RotateCcw, Save, Settings, Smartphone, Square, Tablet, UnfoldHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -60,6 +60,10 @@ type Props = {
   exporting: string | null;
   savedAt: number | null;
   saveError: string | null;
+  saving: boolean;
+  onSave: () => void;
+  errorCount: number;
+  onOpenErrorLog: () => void;
   busy: boolean;
 };
 
@@ -147,7 +151,39 @@ export function Toolbar(props: Props) {
       )}
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <SaveStatus savedAt={props.savedAt} saveError={props.saveError} />
+        <SaveStatus savedAt={props.savedAt} saveError={props.saveError} saving={props.saving} />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={props.onSave}
+          title="Save now (Cmd/Ctrl+S)"
+          aria-label="Save now"
+          disabled={props.busy || props.saving}
+        >
+          {props.saving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="relative h-8 w-8"
+          onClick={props.onOpenErrorLog}
+          title={props.errorCount > 0 ? `Error log (${props.errorCount} unread)` : "Error log"}
+          aria-label={props.errorCount > 0 ? `Error log, ${props.errorCount} unread` : "Error log"}
+        >
+          <Bug className="h-4 w-4" />
+          {props.errorCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold tabular-nums text-destructive-foreground">
+              {props.errorCount > 99 ? "99+" : props.errorCount}
+            </span>
+          )}
+        </Button>
         <Separator orientation="vertical" className="h-5" />
         <ThemeToggle disabled={props.busy} />
         <Button
@@ -577,12 +613,20 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
   );
 }
 
-function SaveStatus({ savedAt, saveError }: { savedAt: number | null; saveError: string | null }) {
+function SaveStatus({ savedAt, saveError, saving }: { savedAt: number | null; saveError: string | null; saving: boolean }) {
   const [, setTick] = React.useState(0);
   React.useEffect(() => {
     const t = setInterval(() => setTick((x) => x + 1), 60_000);
     return () => clearInterval(t);
   }, []);
+
+  if (saving) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+      </span>
+    );
+  }
 
   if (saveError) {
     return (

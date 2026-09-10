@@ -221,7 +221,13 @@ export function useProject(workspace: string | null) {
   const [fileReady, setFileReady] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest committed state for imperative saves (manual Save / Cmd+S).
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  });
 
   // History stacks live in refs — they don't drive any rendered UI, so
   // mutating them never needs to re-render.
@@ -354,12 +360,52 @@ export function useProject(workspace: string | null) {
     }));
   }, [setState]);
 
+  // Manual save: flush any pending debounced write and persist immediately.
+  // Guarded by fileReady so a failed load can't be papered over with a
+  // possibly-blank state.
+  const saveNow = useCallback(async (): Promise<
+    { ok: true } | { ok: false; error: string }
+  > => {
+    if (!workspace) return { ok: false, error: "No workspace selected" };
+    if (!fileReady) return { ok: false, error: "Project file isn't loaded yet" };
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    const snap = stateRef.current;
+    setSaving(true);
+    try {
+      const localResult = saveToLocalStorage(workspace, snap);
+      const fileResult = await saveToFile(workspace, snap);
+      if (fileResult.ok && localResult.ok) {
+        setSavedAt(Date.now());
+        setSaveError(null);
+        return { ok: true };
+      }
+      let error: string;
+      if (!fileResult.ok) {
+        error = `File save failed: ${fileResult.error}`;
+      } else if (!localResult.ok) {
+        error = localResult.error;
+      } else {
+        error = "Unknown save error";
+      }
+      if (localResult.ok) setSavedAt(Date.now());
+      setSaveError(error);
+      return { ok: false, error };
+    } finally {
+      setSaving(false);
+    }
+  }, [workspace, fileReady]);
+
   return {
     state,
     setState,
     hydrated,
     savedAt,
     saveError,
+    saving,
+    saveNow,
     reset,
     resetDevice,
     undo,

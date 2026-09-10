@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { activeProvider, useAppSettings } from "@/lib/app-settings";
 import { DEFAULT_LOCALE, getLocaleFlag, getLocaleLabel } from "@/lib/locale";
+import { reportError } from "@/lib/error-log";
 import {
   translateSlidesForLocale,
   TranslateError,
@@ -68,7 +69,10 @@ export function TranslateDialog({
   const missingKey = !call.apiKey;
   const targets = locales.filter((l) => l !== sourceLocale);
 
-  async function runOne(targetLocale: string, signal: AbortSignal): Promise<"ok" | "error"> {
+  async function runOne(
+    targetLocale: string,
+    signal: AbortSignal,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
     setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "running" } }));
     try {
       const results = await translateSlidesForLocale(call, slides, sourceLocale, targetLocale, {
@@ -85,7 +89,7 @@ export function TranslateDialog({
       );
       onApplyTranslations(targetLocale, results, true);
       setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "done", count } }));
-      return "ok";
+      return { ok: true };
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "idle" } }));
@@ -93,7 +97,7 @@ export function TranslateDialog({
       }
       const error = e instanceof TranslateError ? e.message : String(e);
       setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "error", error } }));
-      return "error";
+      return { ok: false, error };
     }
   }
 
@@ -102,7 +106,7 @@ export function TranslateDialog({
     const controller = new AbortController();
     abortRef.current = controller;
     setBulkRunning(true);
-    const outcomes = new Map<string, "ok" | "error">();
+    const outcomes = new Map<string, "ok" | string>();
     try {
       const queue = [...targets];
       async function runWorker() {
@@ -111,10 +115,11 @@ export function TranslateDialog({
           const target = queue.shift();
           if (!target) break;
           try {
-            outcomes.set(target, await runOne(target, controller.signal));
+            const result = await runOne(target, controller.signal);
+            outcomes.set(target, result.ok ? "ok" : result.error);
           } catch {
             if (controller.signal.aborted) break;
-            // aborts re-throw from runOne; per-locale errors return "error"
+            // aborts re-throw from runOne; per-locale errors return { ok: false }
           }
         }
       }
@@ -130,6 +135,17 @@ export function TranslateDialog({
     if (controller.signal.aborted) return;
     // Dialog may be closed while this ran — toast so the result is visible.
     const ok = [...outcomes.values()].filter((v) => v === "ok").length;
+    const failures = [...outcomes.entries()].filter(([, v]) => v !== "ok");
+    if (failures.length > 0) {
+      reportError(
+        "translate",
+        `${failures.length} of ${targets.length} locales failed to translate`,
+        failures
+          .slice(0, 5)
+          .map(([locale, error]) => `${locale}: ${error}`)
+          .join("\n"),
+      );
+    }
     if (ok === targets.length && targets.length > 0) {
       toast.success(`Translated ${ok} locale${ok === 1 ? "" : "s"}`);
     } else if (ok > 0) {

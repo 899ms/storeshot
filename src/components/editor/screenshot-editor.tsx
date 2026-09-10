@@ -14,6 +14,7 @@ import { detectPlatform, newSlide, nid } from "@/lib/defaults";
 import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/elements";
 import { preloadImages } from "@/lib/image-cache";
 import { resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
+import { reportError, useErrorLog } from "@/lib/error-log";
 import { useProject } from "@/lib/storage";
 import { applyLocaleTranslations } from "@/lib/translate";
 import { useActiveWorkspace } from "@/lib/workspaces";
@@ -30,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Inspector } from "./inspector";
 import { SettingsDialog } from "./settings-dialog";
 import { TranslateDialog } from "./translate-dialog";
+import { ErrorLogDialog } from "./error-log-dialog";
 import { PreviewStage } from "./preview-stage";
 import { Sidebar } from "./sidebar";
 import { DeckCanvas, getCanvas } from "./slide-canvas";
@@ -45,8 +47,13 @@ import {
 
 export function ScreenshotEditor() {
   const workspace = useActiveWorkspace();
-  const { state, setState, hydrated, savedAt, saveError, reset, resetDevice, undo, redo } =
+  const { state, setState, hydrated, savedAt, saveError, saving, saveNow, reset, resetDevice, undo, redo } =
     useProject(workspace);
+  const { unread: errorUnread } = useErrorLog();
+  const [errorLogOpen, setErrorLogOpen] = React.useState(false);
+  // Tracks save errors already surfaced by the manual-save handler so the
+  // autosave effect below doesn't toast twice for the same failure.
+  const lastManualSaveErrorRef = React.useRef<string | null>(null);
   const [activeSlideId, setActiveSlideId] = React.useState<string | null>(null);
   const [selectedElement, setSelectedElement] = React.useState<SelectedElement | null>(null);
   const [exporting, setExporting] = React.useState<string | null>(null);
@@ -128,14 +135,76 @@ export function ScreenshotEditor() {
   }, [hydrated, assetSig]);
 
   // Surface storage failures (quota exceeded etc.) so the user knows their work isn't safe.
+  // Skips errors the manual-save handler already reported to avoid double toasts.
   React.useEffect(() => {
-    if (saveError) {
+    if (saveError && lastManualSaveErrorRef.current !== saveError) {
+      lastManualSaveErrorRef.current = saveError;
+      reportError("storage", saveError);
       toast.error("Couldn't load or save project file", {
         description: saveError,
         duration: 8000,
       });
     }
   }, [saveError]);
+
+  // Manual save: immediate persist with explicit feedback.
+  const handleSaveNow = React.useCallback(async () => {
+    const result = await saveNow();
+    if (result.ok) {
+      toast.success("Project saved");
+    } else {
+      lastManualSaveErrorRef.current = result.error;
+      reportError("storage", result.error);
+      toast.error("Couldn't save project file", {
+        description: result.error,
+        duration: 8000,
+      });
+    }
+  }, [saveNow]);
+
+  // Cmd/Ctrl+S saves even from inside text inputs.
+  React.useEffect(() => {
+    function onSaveKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void handleSaveNow();
+      }
+    }
+    window.addEventListener("keydown", onSaveKey);
+    return () => window.removeEventListener("keydown", onSaveKey);
+  }, [handleSaveNow]);
+
+  // Global error capture: uncaught exceptions and unhandled rejections land
+  // in the error log and surface as toasts.
+  React.useEffect(() => {
+    function onWindowError(e: ErrorEvent) {
+      const message = e.message || "Unknown error";
+      const where =
+        e.filename != null && e.filename !== ""
+          ? `${e.filename}${typeof e.lineno === "number" ? `:${e.lineno}` : ""}${typeof e.colno === "number" ? `:${e.colno}` : ""}`
+          : undefined;
+      reportError("app", message, where);
+      toast.error("Something went wrong", {
+        description: message,
+        duration: 8000,
+      });
+    }
+    function onUnhandledRejection(e: PromiseRejectionEvent) {
+      const message =
+        e.reason instanceof Error ? e.reason.message || String(e.reason) : String(e.reason);
+      reportError("app", `Unhandled rejection: ${message}`);
+      toast.error("Something went wrong", {
+        description: message,
+        duration: 8000,
+      });
+    }
+    window.addEventListener("error", onWindowError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", onWindowError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
 
   // ---------- Mutations ----------
 
@@ -551,6 +620,7 @@ export function ScreenshotEditor() {
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       } catch (e) {
         toast.error("Couldn't bundle export");
+        reportError("export", "Couldn't bundle export", e instanceof Error ? e.message : String(e));
         console.error(e);
         return;
       }
@@ -560,10 +630,12 @@ export function ScreenshotEditor() {
     if (failed === 0) {
       toast.success(`Exported ${okCount} PNGs (${summary})`);
     } else if (okCount === 0) {
+      reportError("export", `All ${failed} renders failed (${summary})`, errors.slice(0, 5).join("\n"));
       toast.error(`All ${failed} renders failed`, {
         description: errors.slice(0, 3).join("\n"),
       });
     } else {
+      reportError("export", `${failed} of ${totalUnits} renders failed (${summary})`, errors.slice(0, 5).join("\n"));
       toast.error(`${failed} of ${totalUnits} renders failed`, {
         description: errors.slice(0, 3).join("\n"),
       });
@@ -652,7 +724,9 @@ export function ScreenshotEditor() {
       }
     } catch (err) {
       console.error("Single screen export failed", err);
-      toast.error("Export failed: " + (err instanceof Error ? err.message : String(err)));
+      const message = err instanceof Error ? err.message : String(err);
+      reportError("export", `Single screen export failed (screen ${idx + 1})`, message);
+      toast.error("Export failed: " + message);
     } finally {
       setExporting(null);
       setExportLocaleOverride(null);
@@ -752,8 +826,14 @@ export function ScreenshotEditor() {
         exporting={exporting}
         savedAt={savedAt}
         saveError={saveError}
+        saving={saving}
+        onSave={() => void handleSaveNow()}
+        errorCount={errorUnread}
+        onOpenErrorLog={() => setErrorLogOpen(true)}
         busy={busy}
       />
+
+      <ErrorLogDialog open={errorLogOpen} onOpenChange={setErrorLogOpen} />
 
       <SettingsDialog
         open={settingsOpen}
