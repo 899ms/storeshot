@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, ArrowUp, Check, ChevronRight, Cloud, Download, Folder, FolderOpen, Home, RotateCcw, Settings, Smartphone, Square, Tablet, UnfoldHorizontal, X } from "lucide-react";
+import { AlertTriangle, ArrowUp, Check, ChevronRight, Cloud, Download, Folder, FolderOpen, Home, Languages, RotateCcw, Settings, Smartphone, Square, Tablet, UnfoldHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -53,6 +53,7 @@ type Props = {
   setOrientation?: (v: Orientation) => void;
   onExport: () => void;
   onOpenSettings: () => void;
+  onOpenTranslate: () => void;
   onStopExport?: () => void;
   onResetAll: () => void;
   onResetDevice?: () => void;
@@ -149,6 +150,19 @@ export function Toolbar(props: Props) {
         <SaveStatus savedAt={props.savedAt} saveError={props.saveError} />
         <Separator orientation="vertical" className="h-5" />
         <ThemeToggle disabled={props.busy} />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 px-2.5 text-xs"
+          onClick={props.onOpenTranslate}
+          title="Translate from English to all added locales"
+          aria-label="Translate"
+          disabled={props.busy}
+        >
+          <Languages className="h-4 w-4" />
+          Translate
+        </Button>
         <Button
           variant="ghost"
           size="icon"

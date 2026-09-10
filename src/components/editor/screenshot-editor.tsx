@@ -13,7 +13,7 @@ import {
 import { detectPlatform, newSlide, nid } from "@/lib/defaults";
 import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/elements";
 import { preloadImages } from "@/lib/image-cache";
-import { resolveScreenshot, writeLocalized } from "@/lib/locale";
+import { resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
 import { useProject } from "@/lib/storage";
 import { applyLocaleTranslations } from "@/lib/translate";
 import { useActiveWorkspace } from "@/lib/workspaces";
@@ -29,6 +29,7 @@ import { ExportProgressIndicator } from "./export-progress";
 import { Button } from "@/components/ui/button";
 import { Inspector } from "./inspector";
 import { SettingsDialog } from "./settings-dialog";
+import { TranslateDialog } from "./translate-dialog";
 import { PreviewStage } from "./preview-stage";
 import { Sidebar } from "./sidebar";
 import { DeckCanvas, getCanvas } from "./slide-canvas";
@@ -51,6 +52,7 @@ export function ScreenshotEditor() {
   const [exporting, setExporting] = React.useState<string | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [translateOpen, setTranslateOpen] = React.useState(false);
   const [ready, setReady] = React.useState(false);
   const [exportLocaleOverride, setExportLocaleOverride] = React.useState<string | null>(null);
   const [exportSlideIndex, setExportSlideIndex] = React.useState(0);
@@ -58,19 +60,9 @@ export function ScreenshotEditor() {
   const stopExportRef = React.useRef<boolean>(false);
 
   const currentSlides = state.slidesByDevice[state.device] || [];
-  // Translation source: the editing locale when it has text, else the first
-  // locale with content, else the first project locale.
-  const translationSourceLocale = React.useMemo(() => {
-    const hasText = (locale: string) =>
-      currentSlides.some(
-        (s) =>
-          (s.label?.[locale] || "").trim() ||
-          (s.headline?.[locale] || "").trim() ||
-          (s.textElements || []).some((el) => (el.text?.[locale] || "").trim()),
-      );
-    if (hasText(state.locale)) return state.locale;
-    return state.locales.find((l) => hasText(l)) || state.locales[0] || "en";
-  }, [currentSlides, state.locale, state.locales]);
+  // Translation source is always the default locale ("en"). All AI
+  // translation reads English copy and writes to the target locale.
+  const translationSourceLocale = DEFAULT_LOCALE;
   const activeSlide =
     currentSlides.find((s) => s.id === activeSlideId) || currentSlides[0] || null;
   const theme = themeById(state.themeId);
@@ -745,6 +737,7 @@ export function ScreenshotEditor() {
         setOrientation={(v) => setState((p) => ({ ...p, orientation: v }))}
         onExport={() => setExportDialogOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenTranslate={() => setTranslateOpen(true)}
         onStopExport={stopExport}
         onResetAll={() => {
           reset();
@@ -767,23 +760,7 @@ export function ScreenshotEditor() {
         onOpenChange={setSettingsOpen}
         locales={state.locales}
         currentLocale={state.locale}
-        sourceLocale={translationSourceLocale}
-        slides={currentSlides}
         disabled={busy}
-        onApplyTranslations={(targetLocale, results, overwrite) =>
-          setState((prev) => ({
-            ...prev,
-            slidesByDevice: {
-              ...prev.slidesByDevice,
-              [prev.device]: applyLocaleTranslations(
-                prev.slidesByDevice[prev.device] || [],
-                results,
-                targetLocale,
-                overwrite,
-              ),
-            },
-          }))
-        }
         onAddLocale={(locale) =>
           setState((prev) =>
             prev.locales.includes(locale)
@@ -801,6 +778,29 @@ export function ScreenshotEditor() {
               locale: prev.locale === locale ? locales[0] : prev.locale,
             };
           })
+        }
+      />
+
+      <TranslateDialog
+        open={translateOpen}
+        onOpenChange={setTranslateOpen}
+        locales={state.locales}
+        slides={currentSlides}
+        sourceLocale={translationSourceLocale}
+        disabled={busy}
+        onApplyTranslations={(targetLocale, results, overwrite) =>
+          setState((prev) => ({
+            ...prev,
+            slidesByDevice: {
+              ...prev.slidesByDevice,
+              [prev.device]: applyLocaleTranslations(
+                prev.slidesByDevice[prev.device] || [],
+                results,
+                targetLocale,
+                overwrite,
+              ),
+            },
+          }))
         }
       />
 

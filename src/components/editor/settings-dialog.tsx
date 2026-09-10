@@ -1,10 +1,9 @@
 "use client";
 import * as React from "react";
-import { Check, FlaskConical, Globe, KeyRound, Languages, Loader2, Plus, Square, Trash2 } from "lucide-react";
+import { Check, FlaskConical, Globe, KeyRound, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -29,14 +28,6 @@ import {
   type ProviderConfig,
 } from "@/lib/app-settings";
 import { getLocaleFlag, getLocaleLabel, LOCALE_NAMES } from "@/lib/locale";
-import {
-  countPendingUnits,
-  translateSlidesForLocale,
-  TranslateError,
-  type SlideTranslation,
-  type TranslateCall,
-} from "@/lib/translate";
-import type { Slide } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -44,16 +35,9 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   locales: string[];
   currentLocale: string;
-  sourceLocale: string;
-  slides: Slide[];
   disabled?: boolean;
   onAddLocale: (locale: string) => void;
   onRemoveLocale: (locale: string) => void;
-  onApplyTranslations: (
-    targetLocale: string,
-    results: Record<string, SlideTranslation>,
-    overwrite: boolean,
-  ) => void;
 };
 
 export function SettingsDialog({
@@ -61,20 +45,12 @@ export function SettingsDialog({
   onOpenChange,
   locales,
   currentLocale,
-  sourceLocale,
-  slides,
   disabled,
   onAddLocale,
   onRemoveLocale,
-  onApplyTranslations,
 }: Props) {
   const { settings, setSettings, patchProvider, addProvider, removeProvider } =
     useAppSettings();
-  const call: TranslateCall = {
-    baseUrl: activeProvider(settings).baseUrl,
-    apiKey: activeProvider(settings).apiKey,
-    model: settings.model,
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -129,13 +105,9 @@ export function SettingsDialog({
               <LocalesTab
                 locales={locales}
                 currentLocale={currentLocale}
-                sourceLocale={sourceLocale}
-                slides={slides}
-                call={call}
                 disabled={disabled}
                 onAdd={onAddLocale}
                 onRemove={onRemoveLocale}
-                onApply={onApplyTranslations}
               />
             </TabsContent>
           </div>
@@ -270,106 +242,35 @@ function ProvidersTab({
   );
 }
 
-type LocaleStatus =
-  | { state: "idle" }
-  | { state: "running" }
-  | { state: "done"; count: number }
-  | { state: "error"; error: string };
-
 function LocalesTab({
   locales,
   currentLocale,
-  sourceLocale,
-  slides,
-  call,
   disabled,
   onAdd,
   onRemove,
-  onApply,
 }: {
   locales: string[];
   currentLocale: string;
-  sourceLocale: string;
-  slides: Slide[];
-  call: TranslateCall;
   disabled?: boolean;
   onAdd: (locale: string) => void;
   onRemove: (locale: string) => void;
-  onApply: (
-    targetLocale: string,
-    results: Record<string, SlideTranslation>,
-    overwrite: boolean,
-  ) => void;
 }) {
   const available = React.useMemo(
     () => Object.keys(LOCALE_NAMES).filter((l) => !locales.includes(l)).sort(),
     [locales],
   );
   const [pending, setPending] = React.useState<string>("");
-  const [overwrite, setOverwrite] = React.useState(false);
-  const [statuses, setStatuses] = React.useState<Record<string, LocaleStatus>>({});
-  const [bulkRunning, setBulkRunning] = React.useState(false);
-  const abortRef = React.useRef<AbortController | null>(null);
-
+  const [query, setQuery] = React.useState<string>("");
+  const filteredAvailable = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return available;
+    return available.filter((l) =>
+      `${l} ${getLocaleLabel(l)}`.toLowerCase().includes(q),
+    );
+  }, [available, query]);
   React.useEffect(() => {
     if (pending && !available.includes(pending)) setPending("");
   }, [pending, available]);
-
-  React.useEffect(() => {
-    return () => abortRef.current?.abort();
-  }, []);
-
-  const missingKey = !call.apiKey;
-  const targets = locales.filter((l) => l !== sourceLocale);
-
-  async function runOne(targetLocale: string, signal: AbortSignal): Promise<number> {
-    setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "running" } }));
-    try {
-      const results = await translateSlidesForLocale(call, slides, sourceLocale, targetLocale, {
-        overwrite,
-        signal,
-      });
-      const count = Object.values(results).reduce(
-        (n, r) =>
-          n +
-          (r.label !== undefined ? 1 : 0) +
-          (r.headline !== undefined ? 1 : 0) +
-          Object.keys(r.texts || {}).length,
-        0,
-      );
-      onApply(targetLocale, results, overwrite);
-      setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "done", count } }));
-      return count;
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "idle" } }));
-        throw e;
-      }
-      const error = e instanceof TranslateError ? e.message : String(e);
-      setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "error", error } }));
-      return 0;
-    }
-  }
-
-  async function runAll() {
-    if (bulkRunning) return;
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setBulkRunning(true);
-    try {
-      for (const target of targets) {
-        if (controller.signal.aborted) break;
-        try {
-          await runOne(target, controller.signal);
-        } catch {
-          break; // aborted
-        }
-      }
-    } finally {
-      abortRef.current = null;
-      setBulkRunning(false);
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -389,7 +290,7 @@ function LocalesTab({
                   editing
                 </Badge>
               )}
-              {loc === sourceLocale && (
+              {loc === "en" && (
                 <Badge variant="outline" className="px-1 py-0 text-[9px]">
                   source
                 </Badge>
@@ -409,14 +310,59 @@ function LocalesTab({
             </span>
           ))}
         </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold">
+            Supported locales ({locales.length}/{Object.keys(LOCALE_NAMES).length})
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-[11px]"
+              disabled={disabled || available.length === 0}
+              onClick={() => {
+                for (const l of available) onAdd(l);
+                setPending("");
+                setQuery("");
+              }}
+            >
+              Select all
+            </Button>
+            <span className="text-[11px] text-muted-foreground">•</span>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-[11px] text-muted-foreground"
+              disabled={disabled || locales.length <= 1}
+              onClick={() => {
+                for (const l of locales) {
+                  if (l !== currentLocale) onRemove(l);
+                }
+              }}
+            >
+              Deselect all
+            </Button>
+          </div>
+        </div>
         {available.length > 0 && (
+          <>
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search locales…"
+            aria-label="Search locales"
+            className="h-8 text-xs"
+            disabled={disabled}
+          />
           <div className="flex gap-2">
             <Select value={pending} onValueChange={setPending} disabled={disabled}>
               <SelectTrigger className="h-8 flex-1 text-xs" aria-label="Add language">
                 <SelectValue placeholder="Add a language…" />
               </SelectTrigger>
               <SelectContent className="max-h-72">
-                {available.map((l) => (
+                {filteredAvailable.map((l) => (
                   <SelectItem key={l} value={l}>
                     {getLocaleFlag(l)} {getLocaleLabel(l)} ({l})
                   </SelectItem>
@@ -438,119 +384,12 @@ function LocalesTab({
               <Plus className="h-3.5 w-3.5" /> Add
             </Button>
           </div>
+          </>
         )}
         <p className="text-[11px] text-muted-foreground">
           Removing a language keeps its saved texts in the project file but hides it from the
-          editor and exports.
+          editor and exports. English (en) is always the translation source.
         </p>
-      </div>
-
-      <div className="space-y-2 border-t pt-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <h4 className="flex items-center gap-1.5 text-xs font-semibold">
-            <Languages className="h-3.5 w-3.5 text-muted-foreground" />
-            Translate from {getLocaleFlag(sourceLocale)} {sourceLocale}
-          </h4>
-          <div className="ml-auto flex items-center gap-2">
-            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Checkbox
-                checked={overwrite}
-                onCheckedChange={(v) => setOverwrite(v === true)}
-                disabled={disabled || bulkRunning}
-              />
-              Overwrite existing
-            </label>
-            {bulkRunning ? (
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="h-7 gap-1 text-[11px]"
-                onClick={() => abortRef.current?.abort()}
-              >
-                <Square className="h-3 w-3 fill-current" /> Stop
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                className="h-7 gap-1 text-[11px]"
-                disabled={disabled || missingKey || targets.length === 0}
-                onClick={() => void runAll()}
-                title={
-                  missingKey
-                    ? "Add an API key in the Providers tab first"
-                    : "Translate all missing texts"
-                }
-              >
-                <Languages className="h-3 w-3" /> Translate all missing
-              </Button>
-            )}
-          </div>
-        </div>
-        {missingKey && (
-          <p className="text-[11px] text-amber-600 dark:text-amber-400">
-            Add an API key in the Providers tab to enable translation.
-          </p>
-        )}
-        <div className="space-y-1.5">
-          {targets.map((target) => {
-            const status = statuses[target] || { state: "idle" as const };
-            const pendingCount = countPendingUnits(slides, sourceLocale, target);
-            return (
-              <div
-                key={target}
-                className="flex items-center gap-2 rounded-md border border-border/70 px-2 py-1.5 text-xs"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {getLocaleFlag(target)} {getLocaleLabel(target)}{" "}
-                  <span className="font-mono text-[10px] uppercase text-muted-foreground">
-                    ({target})
-                  </span>
-                </span>
-                {status.state === "done" && (
-                  <span className="flex shrink-0 items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
-                    <Check className="h-3 w-3" /> {status.count} translated
-                  </span>
-                )}
-                {status.state === "error" && (
-                  <span className="max-w-56 shrink-0 truncate text-[11px] text-destructive" title={status.error}>
-                    {status.error}
-                  </span>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-6 shrink-0 px-2 text-[11px]"
-                  disabled={disabled || missingKey || status.state === "running" || bulkRunning}
-                  onClick={() => {
-                    const controller = new AbortController();
-                    abortRef.current = controller;
-                    void runOne(target, controller.signal).finally(() => {
-                      if (abortRef.current === controller) abortRef.current = null;
-                    });
-                  }}
-                >
-                  {status.state === "running" ? (
-                    <span className="flex items-center gap-1">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Translating…
-                    </span>
-                  ) : pendingCount === 0 ? (
-                    "Up to date"
-                  ) : (
-                    `Translate (${pendingCount})`
-                  )}
-                </Button>
-              </div>
-            );
-          })}
-          {targets.length === 0 && (
-            <p className="text-[11px] text-muted-foreground">
-              Add another language above to enable translation.
-            </p>
-          )}
-        </div>
       </div>
     </div>
   );

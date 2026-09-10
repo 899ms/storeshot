@@ -4,8 +4,10 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  AlertTriangle,
   ArrowDownToLine,
   ArrowUpToLine,
+  Check,
   ChevronDown,
   ChevronUp,
   Download,
@@ -38,7 +40,7 @@ import {
   textElementKey,
   toTextElementId,
 } from "@/lib/elements";
-import { getLocaleFlag, getLocaleLabel, pickText, writeLocalized } from "@/lib/locale";
+import { DEFAULT_LOCALE, pickText, writeLocalized } from "@/lib/locale";
 import {
   applyLocaleTranslations,
   translateSlidesForLocale,
@@ -251,11 +253,11 @@ export function Inspector({
 // Re-translate the current screen's texts into one target locale.
 // Overwrites the target (it's an explicit re-translate); the run applies as
 // a single onChange so Ctrl+Z restores the previous texts. Hidden for static
-// screens, which carry no texts.
+// One-tap translate for the right sidebar: translates this screen from en to
+// the current editing locale. No options — always overwrites the target.
 function ScreenTranslate({
   slide,
   locale,
-  locales,
   sourceLocale,
   disabled,
   onChange,
@@ -269,10 +271,8 @@ function ScreenTranslate({
 }) {
   const { settings } = useAppSettings();
   const provider = activeProvider(settings);
-  const targets = React.useMemo(() => locales.filter((l) => l !== sourceLocale), [locales, sourceLocale]);
-  const [target, setTarget] = React.useState<string>(
-    locale !== sourceLocale ? locale : (targets[0] ?? ""),
-  );
+  const source = DEFAULT_LOCALE;
+  void sourceLocale;
   const [running, setRunning] = React.useState(false);
   const [status, setStatus] = React.useState<
     { kind: "done"; count: number } | { kind: "error"; error: string } | null
@@ -280,15 +280,14 @@ function ScreenTranslate({
   const abortRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(() => {
-    if (!targets.includes(target)) setTarget(targets[0] ?? "");
-  }, [targets, target]);
-
-  React.useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
 
+  // Nothing to do when editing the source locale itself.
+  if (locale === source) return null;
+
   async function run() {
-    if (!target || running) return;
+    if (running) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
@@ -297,11 +296,11 @@ function ScreenTranslate({
       const results = await translateSlidesForLocale(
         { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: settings.model },
         [slide],
-        sourceLocale,
-        target,
+        source,
+        locale,
         { overwrite: true, signal: controller.signal },
       );
-      const next = applyLocaleTranslations([slide], results, target, true)[0];
+      const next = applyLocaleTranslations([slide], results, locale, true)[0];
       onChange({ label: next.label, headline: next.headline, textElements: next.textElements });
       const count = Object.values(results).reduce(
         (n, r) =>
@@ -327,49 +326,42 @@ function ScreenTranslate({
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">Translate this screen</Label>
       {!provider.apiKey ? (
         <p className="text-[11px] text-muted-foreground">
-          Add an API key in Settings → Providers to enable translation.
+          Add your OpenRouter API key in Settings → Providers (then Test) to enable
+          translation.
         </p>
       ) : (
-        <div className="flex gap-2">
-          <Select value={target} onValueChange={setTarget} disabled={disabled || running}>
-            <SelectTrigger className="h-7 flex-1 text-xs" aria-label="Translation target language">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {targets.map((l) => (
-                <SelectItem key={l} value={l}>
-                  {getLocaleFlag(l)} {getLocaleLabel(l)} ({l})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            size="sm"
-            className="h-7 shrink-0 gap-1 text-xs"
-            disabled={disabled || running || !target}
-            onClick={() => void run()}
-            title={`Re-translate label, headline and text elements from ${sourceLocale}`}
-          >
-            {running ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Languages className="h-3 w-3" />
-            )}
-            {running ? "…" : "Translate"}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 w-full gap-1 text-xs"
+          disabled={disabled || running}
+          onClick={() => void run()}
+          title={`Translate this screen from en to ${locale}`}
+        >
+          {running ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Languages className="h-3 w-3" />
+          )}
+          {running ? "Translating…" : `Translate to ${locale.toUpperCase()}`}
+        </Button>
       )}
       {status?.kind === "done" && (
-        <p className="text-[11px] text-green-600 dark:text-green-400">
-          {status.count} strings translated — undo with Ctrl+Z.
+        <p
+          className="flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400"
+          title={`${status.count} strings translated — undo with Ctrl+Z`}
+        >
+          <Check className="h-3.5 w-3.5 shrink-0" aria-label="Translated" />
+          <span className="tabular-nums">{status.count}</span>
         </p>
       )}
       {status?.kind === "error" && (
-        <p className="text-[11px] text-destructive">{status.error}</p>
+        <p className="flex items-center gap-1 text-[11px] text-destructive" title={status.error}>
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-label="Translation failed" />
+          <span className="min-w-0 flex-1 truncate">{status.error}</span>
+        </p>
       )}
     </div>
   );
