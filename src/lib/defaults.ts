@@ -6,6 +6,10 @@ export function nid(): string {
   return "s_" + Math.random().toString(36).slice(2, 9);
 }
 
+// Default caption typefaces (Google Fonts family names).
+export const DEFAULT_HEADLINE_FONT = "Nunito";
+export const DEFAULT_LABEL_FONT = "Inter";
+
 function en(text: string): Record<string, string> {
   return { en: text };
 }
@@ -70,6 +74,8 @@ export const DEFAULT_PROJECT: ProjectState = {
   locale: DEFAULT_LOCALE,
   device: "iphone",
   orientation: "portrait",
+  headlineFont: DEFAULT_HEADLINE_FONT,
+  labelFont: DEFAULT_LABEL_FONT,
   slidesByDevice: {
     iphone: makeStarterSlides("iphone"),
     ipad: makeStarterSlides("ipad"),
@@ -89,6 +95,8 @@ export function makeEmptyProject(): ProjectState {
     locale: "en",
     device: "iphone",
     orientation: "portrait",
+    headlineFont: DEFAULT_HEADLINE_FONT,
+    labelFont: DEFAULT_LABEL_FONT,
     slidesByDevice: { iphone: [], ipad: [] },
   };
 }

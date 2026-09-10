@@ -126,6 +126,13 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
   if (!merged.locales.includes(merged.locale)) {
     merged.locale = merged.locales[0];
   }
+  // Backfill caption typefaces for projects saved before fonts existed.
+  if (typeof merged.headlineFont !== "string" || !merged.headlineFont.trim()) {
+    merged.headlineFont = DEFAULT_PROJECT.headlineFont;
+  }
+  if (typeof merged.labelFont !== "string" || !merged.labelFont.trim()) {
+    merged.labelFont = DEFAULT_PROJECT.labelFont;
+  }
   return merged;
 }
 

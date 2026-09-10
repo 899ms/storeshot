@@ -32,6 +32,8 @@ type Props = {
   appName?: string;
   appIcon?: string;
   connectedCanvas: boolean;
+  headlineFont?: string;
+  labelFont?: string;
   disabled?: boolean;
   onReorder: (next: Slide[]) => void;
   onSelect: (id: string) => void;
@@ -50,6 +52,8 @@ export function Sidebar({
   appName,
   appIcon,
   connectedCanvas,
+  headlineFont,
+  labelFont,
   disabled,
   onReorder,
   onSelect,
@@ -98,6 +102,8 @@ export function Sidebar({
                   appName={appName}
                   appIcon={appIcon}
                   connectedCanvas={connectedCanvas}
+                  headlineFont={headlineFont}
+                  labelFont={labelFont}
                   onSelect={() => onSelect(slide.id)}
                   onDelete={() => onDelete(slide.id)}
                   onDuplicate={() => onDuplicate(slide.id)}

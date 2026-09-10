@@ -15,8 +15,14 @@ import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/eleme
 import { preloadImages } from "@/lib/image-cache";
 import { resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
 import { reportError, useErrorLog } from "@/lib/error-log";
+import { ensureFontsLoaded } from "@/lib/fonts";
 import { useProject } from "@/lib/storage";
-import { applyLocaleTranslations } from "@/lib/translate";
+import { activeProvider, useAppSettings } from "@/lib/app-settings";
+import {
+  applyLocaleTranslations,
+  translateSlidesForLocale,
+  TranslateError,
+} from "@/lib/translate";
 import { useActiveWorkspace } from "@/lib/workspaces";
 import type {
   BuiltInElementId,
@@ -61,6 +67,9 @@ export function ScreenshotEditor() {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [translateOpen, setTranslateOpen] = React.useState(false);
   const [ready, setReady] = React.useState(false);
+  const [translatingLocale, setTranslatingLocale] = React.useState(false);
+  const translateLocaleAbortRef = React.useRef<AbortController | null>(null);
+  const { settings: appSettings } = useAppSettings();
   const [exportLocaleOverride, setExportLocaleOverride] = React.useState<string | null>(null);
   const [exportSlideIndex, setExportSlideIndex] = React.useState(0);
   const exportRef = React.useRef<HTMLDivElement | null>(null);
@@ -70,6 +79,77 @@ export function ScreenshotEditor() {
   // Translation source is always the default locale ("en"). All AI
   // translation reads English copy and writes to the target locale.
   const translationSourceLocale = DEFAULT_LOCALE;
+  // Screens that carry localizable text (static image screens have none).
+  const translatableCount = currentSlides.filter((s) => s.layout !== "static").length;
+
+  // Translate every screen of the current device deck into the currently
+  // selected locale. Single setState so the run is one undo step.
+  const handleTranslateLocale = React.useCallback(async () => {
+    const target = state.locale;
+    if (target === DEFAULT_LOCALE || translatableCount === 0) return;
+    const provider = activeProvider(appSettings);
+    if (!provider.apiKey) {
+      toast.error("Add your API key first", {
+        description: "Add your OpenRouter API key in Settings → Providers (then Test).",
+        duration: 8000,
+      });
+      return;
+    }
+    const controller = new AbortController();
+    translateLocaleAbortRef.current = controller;
+    setTranslatingLocale(true);
+    try {
+      const results = await translateSlidesForLocale(
+        { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: appSettings.model },
+        currentSlides,
+        DEFAULT_LOCALE,
+        target,
+        { overwrite: true, signal: controller.signal },
+      );
+      const count = Object.values(results).reduce(
+        (n, r) =>
+          n +
+          (r.label !== undefined ? 1 : 0) +
+          (r.headline !== undefined ? 1 : 0) +
+          Object.keys(r.texts || {}).length,
+        0,
+      );
+      setState((prev) => ({
+        ...prev,
+        slidesByDevice: {
+          ...prev.slidesByDevice,
+          [prev.device]: applyLocaleTranslations(
+            prev.slidesByDevice[prev.device] || [],
+            results,
+            target,
+            true,
+          ),
+        },
+      }));
+      toast.success(`Translated ${count} strings to ${target}`);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      const message = e instanceof TranslateError ? e.message : String(e);
+      reportError("translate", `Translate ${translatableCount} screens to ${target} failed`, message);
+      toast.error("Translation failed", { description: message, duration: 8000 });
+    } finally {
+      setTranslatingLocale(false);
+      if (translateLocaleAbortRef.current === controller) {
+        translateLocaleAbortRef.current = null;
+      }
+    }
+  }, [state.locale, translatableCount, appSettings, currentSlides, setState]);
+
+  React.useEffect(() => {
+    return () => translateLocaleAbortRef.current?.abort();
+  }, []);
+
+  // Load the project's caption typefaces (runtime Google Fonts) so canvas,
+  // thumbs, and exports render the selected families.
+  React.useEffect(() => {
+    if (!hydrated) return;
+    void ensureFontsLoaded([state.headlineFont, state.labelFont]);
+  }, [hydrated, state.headlineFont, state.labelFont]);
   const activeSlide =
     currentSlides.find((s) => s.id === activeSlideId) || currentSlides[0] || null;
   const theme = themeById(state.themeId);
@@ -527,6 +607,7 @@ export function ScreenshotEditor() {
 
     // Make sure custom fonts are loaded before snapshot so typography in PNG
     // matches what's on screen.
+    await ensureFontsLoaded([state.headlineFont, state.labelFont]);
     if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
       try {
         await document.fonts.ready;
@@ -675,6 +756,7 @@ export function ScreenshotEditor() {
     await preloadImages(singlePaths, { retryFailed: true });
     await waitForPaint();
 
+    await ensureFontsLoaded([state.headlineFont, state.labelFont]);
     if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
       try {
         await document.fonts.ready;
@@ -813,6 +895,10 @@ export function ScreenshotEditor() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenTranslate={() => setTranslateOpen(true)}
         onStopExport={stopExport}
+        translatableCount={translatableCount}
+        translatingLocale={translatingLocale}
+        canTranslateLocale={activeProvider(appSettings).apiKey.length > 0}
+        onTranslateLocale={() => void handleTranslateLocale()}
         onResetAll={() => {
           reset();
           setActiveSlideId(null);
@@ -840,6 +926,8 @@ export function ScreenshotEditor() {
         onOpenChange={setSettingsOpen}
         locales={state.locales}
         currentLocale={state.locale}
+        headlineFont={state.headlineFont}
+        labelFont={state.labelFont}
         disabled={busy}
         onAddLocale={(locale) =>
           setState((prev) =>
@@ -859,6 +947,8 @@ export function ScreenshotEditor() {
             };
           })
         }
+        onHeadlineFontChange={(family) => setState((p) => ({ ...p, headlineFont: family }))}
+        onLabelFontChange={(family) => setState((p) => ({ ...p, labelFont: family }))}
       />
 
       <TranslateDialog
@@ -925,6 +1015,8 @@ export function ScreenshotEditor() {
             appName={state.appName}
             appIcon={state.appIcon}
             connectedCanvas={state.connectedCanvas}
+            headlineFont={state.headlineFont}
+            labelFont={state.labelFont}
             disabled={busy}
             onReorder={reorderSlides}
             onSelect={setActiveSlideId}
@@ -947,6 +1039,8 @@ export function ScreenshotEditor() {
               appIcon={state.appIcon}
               connectedCanvas={state.connectedCanvas}
               selectedElement={selectedElement}
+              headlineFont={state.headlineFont}
+              labelFont={state.labelFont}
               onActiveSlideChange={setActiveSlideId}
               onLabelChange={(slide, v) => patchLocalized(slide, "label", v)}
               onHeadlineChange={(slide, v) => patchLocalized(slide, "headline", v)}
@@ -1048,6 +1142,8 @@ export function ScreenshotEditor() {
                 appName={state.appName}
                 appIcon={state.appIcon}
                 connectedCanvas={state.connectedCanvas}
+                headlineFont={state.headlineFont}
+                labelFont={state.labelFont}
                 hideEmpty
               />
             </div>

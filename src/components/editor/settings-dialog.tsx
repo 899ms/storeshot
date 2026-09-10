@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Check, FlaskConical, Globe, KeyRound, Plus, Trash2 } from "lucide-react";
+import { Check, FlaskConical, Globe, KeyRound, Plus, Trash2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -28,6 +28,7 @@ import {
   type ProviderConfig,
 } from "@/lib/app-settings";
 import { getLocaleFlag, getLocaleLabel, LOCALE_NAMES } from "@/lib/locale";
+import { CURATED_FONTS, ensurePreviewFonts, fontStack } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -35,9 +36,13 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   locales: string[];
   currentLocale: string;
+  headlineFont: string;
+  labelFont: string;
   disabled?: boolean;
   onAddLocale: (locale: string) => void;
   onRemoveLocale: (locale: string) => void;
+  onHeadlineFontChange: (family: string) => void;
+  onLabelFontChange: (family: string) => void;
 };
 
 export function SettingsDialog({
@@ -45,9 +50,13 @@ export function SettingsDialog({
   onOpenChange,
   locales,
   currentLocale,
+  headlineFont,
+  labelFont,
   disabled,
   onAddLocale,
   onRemoveLocale,
+  onHeadlineFontChange,
+  onLabelFontChange,
 }: Props) {
   const { settings, setSettings, patchProvider, addProvider, removeProvider } =
     useAppSettings();
@@ -58,7 +67,7 @@ export function SettingsDialog({
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle className="text-base font-bold">Settings</DialogTitle>
           <DialogDescription className="text-xs">
-            Providers, model, and project languages. API keys stay in this browser only.
+            Providers, model, fonts, and project languages. API keys stay in this browser only.
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="providers" className="flex min-h-0 flex-1 flex-col">
@@ -69,6 +78,9 @@ export function SettingsDialog({
               </TabsTrigger>
               <TabsTrigger value="model" className="gap-1.5 text-xs">
                 Model
+              </TabsTrigger>
+              <TabsTrigger value="fonts" className="gap-1.5 text-xs">
+                <Type className="h-3.5 w-3.5" /> Fonts
               </TabsTrigger>
               <TabsTrigger value="locales" className="gap-1.5 text-xs">
                 <Globe className="h-3.5 w-3.5" /> Locales ({locales.length})
@@ -100,6 +112,15 @@ export function SettingsDialog({
                   Any <code>provider/model</code> slug works.
                 </p>
               </div>
+            </TabsContent>
+            <TabsContent value="fonts" className="mt-0 space-y-4">
+              <FontsTab
+                headlineFont={headlineFont}
+                labelFont={labelFont}
+                disabled={disabled}
+                onHeadlineFontChange={onHeadlineFontChange}
+                onLabelFontChange={onLabelFontChange}
+              />
             </TabsContent>
             <TabsContent value="locales" className="mt-0 space-y-3">
               <LocalesTab
@@ -238,6 +259,130 @@ function ProvidersTab({
       <Button type="button" variant="outline" size="sm" className="gap-1.5 text-xs" onClick={onAdd}>
         <Plus className="h-3.5 w-3.5" /> Add provider
       </Button>
+    </div>
+  );
+}
+
+function FontsTab({
+  headlineFont,
+  labelFont,
+  disabled,
+  onHeadlineFontChange,
+  onLabelFontChange,
+}: {
+  headlineFont: string;
+  labelFont: string;
+  disabled?: boolean;
+  onHeadlineFontChange: (family: string) => void;
+  onLabelFontChange: (family: string) => void;
+}) {
+  // Load every curated family once so each row previews in its own typeface.
+  React.useEffect(() => {
+    ensurePreviewFonts();
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <FontPicker
+        label="Headline"
+        hint="Big multi-line headline on each screen"
+        value={headlineFont}
+        disabled={disabled}
+        onSelect={onHeadlineFontChange}
+      />
+      <FontPicker
+        label="Label"
+        hint="Small title above the headline + overlay texts"
+        value={labelFont}
+        disabled={disabled}
+        onSelect={onLabelFontChange}
+      />
+    </div>
+  );
+}
+
+function FontPicker({
+  label,
+  hint,
+  value,
+  disabled,
+  onSelect,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  disabled?: boolean;
+  onSelect: (family: string) => void;
+}) {
+  const [query, setQuery] = React.useState("");
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return CURATED_FONTS;
+    return CURATED_FONTS.filter((f) => f.family.toLowerCase().includes(q));
+  }, [query]);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <Label className="text-xs">{label}</Label>
+        <span className="truncate text-[10px] text-muted-foreground">{hint}</span>
+      </div>
+      <Input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={`Search ${CURATED_FONTS.length} fonts…`}
+        aria-label={`Search ${label} fonts`}
+        className="h-8 text-xs"
+        disabled={disabled}
+      />
+      <div
+        role="listbox"
+        aria-label={`${label} font`}
+        className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-1"
+      >
+        {filtered.map((f) => {
+          const selected = value === f.family;
+          return (
+            <button
+              key={f.family}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              disabled={disabled}
+              onClick={() => onSelect(f.family)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition-colors disabled:opacity-40",
+                selected ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/60",
+              )}
+            >
+              <span
+                aria-hidden
+                className="w-10 shrink-0 text-center text-xl leading-none"
+                style={{ fontFamily: fontStack(f.family) }}
+              >
+                Ag
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  className="block truncate text-sm leading-tight"
+                  style={{ fontFamily: fontStack(f.family) }}
+                >
+                  {f.family}
+                </span>
+                <span className="block truncate text-[10px] text-muted-foreground">
+                  {f.blurb}
+                </span>
+              </span>
+              {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
+            </button>
+          );
+        })}
+        {filtered.length === 0 && (
+          <p className="px-2 py-4 text-center text-[11px] text-muted-foreground">
+            No fonts match “{query}”.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

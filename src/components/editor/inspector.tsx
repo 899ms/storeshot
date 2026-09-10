@@ -345,7 +345,7 @@ function ScreenTranslate({
           ) : (
             <Languages className="h-3 w-3" />
           )}
-          {running ? "Translating…" : `Translate to ${locale.toUpperCase()}`}
+          {running ? "Translating…" : "Translate Screen"}
         </Button>
       )}
       {status?.kind === "done" && (

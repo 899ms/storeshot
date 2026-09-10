@@ -94,5 +94,9 @@ export type ProjectState = {
   orientation: Orientation;
   // Per-device slide decks so platform switching preserves work
   slidesByDevice: Record<Device, Slide[]>;
+  // Caption typefaces (Google Fonts family names). Headline defaults to
+  // Nunito, the small label above it and overlay text elements to Inter.
+  headlineFont: string;
+  labelFont: string;
   appIcon?: string;    // workspace-relative path (e.g. uploads/app-icon.png) or absolute /…
 };

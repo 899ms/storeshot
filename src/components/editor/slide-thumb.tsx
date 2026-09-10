@@ -23,6 +23,8 @@ type Props = {
   appName?: string;
   appIcon?: string;
   connectedCanvas: boolean;
+  headlineFont?: string;
+  labelFont?: string;
   onSelect: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -43,6 +45,8 @@ export function SlideThumb({
   appName,
   appIcon,
   connectedCanvas,
+  headlineFont,
+  labelFont,
   onSelect,
   onDelete,
   onDuplicate,
@@ -122,6 +126,8 @@ export function SlideThumb({
                 appIcon={appIcon}
                 connectedCanvas
                 editable={false}
+                headlineFont={headlineFont}
+                labelFont={labelFont}
               />
             ) : (
               <SlideCanvas
@@ -133,6 +139,8 @@ export function SlideThumb({
                 appName={appName}
                 appIcon={appIcon}
                 editable={false}
+                headlineFont={headlineFont}
+                labelFont={labelFont}
               />
             )}
           </div>

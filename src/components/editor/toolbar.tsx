@@ -64,6 +64,10 @@ type Props = {
   onSave: () => void;
   errorCount: number;
   onOpenErrorLog: () => void;
+  translatableCount: number;
+  translatingLocale: boolean;
+  canTranslateLocale: boolean;
+  onTranslateLocale: () => void;
   busy: boolean;
 };
 
@@ -134,6 +138,7 @@ export function Toolbar(props: Props) {
       ) : null}
 
       {showLocale && (
+        <>
         <Select value={props.locale} onValueChange={props.setLocale} disabled={props.busy}>
           <SelectTrigger className="h-8 w-44 text-xs" aria-label="Language">
             <SelectValue placeholder="Language">
@@ -148,6 +153,33 @@ export function Toolbar(props: Props) {
             ))}
           </SelectContent>
         </Select>
+        {props.locale !== "en" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-2.5 text-xs"
+            onClick={props.onTranslateLocale}
+            title={`Translate all screens from English to ${props.locale}`}
+            aria-label={`Translate ${props.translatableCount} screens to ${props.locale}`}
+            disabled={
+              props.busy ||
+              props.translatingLocale ||
+              !props.canTranslateLocale ||
+              props.translatableCount === 0
+            }
+          >
+            {props.translatingLocale ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Languages className="h-4 w-4" />
+            )}
+            {props.translatingLocale
+              ? "Translating…"
+              : `Translate ${props.translatableCount} Screen${props.translatableCount === 1 ? "" : "s"}`}
+          </Button>
+        )}
+        </>
       )}
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -193,11 +225,11 @@ export function Toolbar(props: Props) {
           className="h-8 gap-1.5 px-2.5 text-xs"
           onClick={props.onOpenTranslate}
           title="Translate from English to all added locales"
-          aria-label="Translate"
+          aria-label="Translate All"
           disabled={props.busy}
         >
           <Languages className="h-4 w-4" />
-          Translate
+          Translate All
         </Button>
         <Button
           variant="ghost"

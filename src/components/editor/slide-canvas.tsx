@@ -25,6 +25,8 @@ import {
 import { toTextElementId } from "@/lib/elements";
 import { img } from "@/lib/image-cache";
 import { pickText, resolveScreenshot } from "@/lib/locale";
+import { fontStack } from "@/lib/fonts";
+import { DEFAULT_HEADLINE_FONT, DEFAULT_LABEL_FONT } from "@/lib/defaults";
 import { IPad, Phone } from "./device-frames";
 
 type FrameComp = React.ComponentType<{
@@ -77,6 +79,10 @@ type Props = {
   previewScale?: number;
   /** When true, suppress the "Drop a screenshot here" placeholder. Used for export. */
   hideEmpty?: boolean;
+  /** Google Fonts family for the headline. Defaults to Nunito. */
+  headlineFont?: string;
+  /** Google Fonts family for the label + overlay texts. Defaults to Inter. */
+  labelFont?: string;
 };
 
 type DeckEditHandlers = {
@@ -104,6 +110,10 @@ type DeckCanvasProps = {
   previewScale?: number;
   hideEmpty?: boolean;
   showGuides?: boolean;
+  /** Google Fonts family for the headline. Defaults to Nunito. */
+  headlineFont?: string;
+  /** Google Fonts family for the label + overlay texts. Defaults to Inter. */
+  labelFont?: string;
 };
 
 // ---------- Editable text helpers ----------
@@ -207,6 +217,8 @@ function Caption({
   edit,
   align = "center",
   inverted,
+  headlineFont,
+  labelFont,
   onFocus,
 }: {
   cW: number;
@@ -218,6 +230,8 @@ function Caption({
   edit?: EditHandlers;
   align?: "center" | "left";
   inverted?: boolean;
+  headlineFont?: string;
+  labelFont?: string;
   onFocus?: () => void;
 }) {
   const fg = inverted ? theme.fgAlt : theme.fg;
@@ -241,6 +255,7 @@ function Caption({
           textTransform: "uppercase",
           marginBottom: unit * 0.018,
           minHeight: unit * 0.03,
+          fontFamily: fontStack(labelFont || DEFAULT_LABEL_FONT),
         }}
       />
       <EditableText
@@ -256,6 +271,7 @@ function Caption({
           lineHeight: 1.2,
           letterSpacing: -unit * 0.001,
           color: fg,
+          fontFamily: fontStack(headlineFont || DEFAULT_HEADLINE_FONT),
         }}
       />
     </div>
@@ -479,6 +495,8 @@ export function SlideCanvas({
   selectedElementId = null,
   previewScale = 1,
   hideEmpty,
+  headlineFont,
+  labelFont,
 }: Props) {
   const { cW, cH } = getCanvas(device, orientation);
 
@@ -510,6 +528,8 @@ export function SlideCanvas({
         selectedElementId={selectedElementId}
         previewScale={previewScale}
         hideEmpty={hideEmpty}
+        headlineFont={headlineFont}
+        labelFont={labelFont}
         screenX={0}
         boundsW={cW}
         boundsH={cH}
@@ -537,6 +557,8 @@ export function DeckCanvas({
   previewScale = 1,
   hideEmpty,
   showGuides = false,
+  headlineFont,
+  labelFont,
 }: DeckCanvasProps) {
   const { cW, cH } = getCanvas(device, orientation);
   const totalW = Math.max(1, slides.length) * cW;
@@ -605,6 +627,8 @@ export function DeckCanvas({
             selectedElementId={selectedElementId}
             previewScale={previewScale}
             hideEmpty={hideEmpty}
+            headlineFont={headlineFont}
+            labelFont={labelFont}
             screenX={connectedCanvas ? index * cW : 0}
             boundsW={connectedCanvas ? totalW : cW}
             boundsH={cH}
@@ -781,6 +805,8 @@ function SlideElements({
   selectedElementId,
   previewScale,
   hideEmpty,
+  headlineFont,
+  labelFont,
   screenX,
   boundsW,
   boundsH,
@@ -796,6 +822,8 @@ function SlideElements({
   selectedElementId: ElementId | null;
   previewScale: number;
   hideEmpty?: boolean;
+  headlineFont?: string;
+  labelFont?: string;
   screenX: number;
   boundsW: number;
   boundsH: number;
@@ -848,6 +876,8 @@ function SlideElements({
         edit={edit}
         align={captionRect.align || "center"}
         inverted={inverted}
+        headlineFont={headlineFont}
+        labelFont={labelFont}
         onFocus={() => edit?.onSelectElement?.("caption")}
       />
     );
@@ -978,6 +1008,7 @@ function SlideElements({
               lineHeight: 1.05,
               textAlign: textElement.align ?? "center",
               textShadow: inverted ? "0 2px 18px rgba(0,0,0,0.22)" : "0 2px 18px rgba(255,255,255,0.2)",
+              fontFamily: fontStack(labelFont || DEFAULT_LABEL_FONT),
             }}
           />
         </div>

@@ -27,6 +27,8 @@ type Props = {
   appIcon?: string;
   connectedCanvas: boolean;
   selectedElement: SelectedElement | null;
+  headlineFont?: string;
+  labelFont?: string;
   onActiveSlideChange: (id: string) => void;
   onLabelChange: (slide: Slide, v: string) => void;
   onHeadlineChange: (slide: Slide, v: string) => void;
@@ -48,6 +50,8 @@ export function PreviewStage({
   appIcon,
   connectedCanvas,
   selectedElement,
+  headlineFont,
+  labelFont,
   onActiveSlideChange,
   onLabelChange,
   onHeadlineChange,
@@ -146,6 +150,8 @@ export function PreviewStage({
               selectedElement={selectedElement}
               activeSlideId={activeSlide?.id || null}
               showGuides
+              headlineFont={headlineFont}
+              labelFont={labelFont}
               edit={{
                 onLabelChange: (slideId, value) => {
                   const slide = slides.find((s) => s.id === slideId);
