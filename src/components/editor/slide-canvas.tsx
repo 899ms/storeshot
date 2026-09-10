@@ -679,19 +679,24 @@ function SlideBackground({
   const inverted = !!slide.inverted;
   const bg = background ?? slide.background ?? { kind: "theme" as const };
   const textColor = inverted ? theme.fgAlt : theme.fg;
+  // Style tweaks shared by every kind. Blur gets a slight scale so softened
+  // edges never show the screen bounds.
+  const opacity = bg.opacity ?? 1;
+  const blur = Math.max(0, bg.blur ?? 0);
+  const layerStyle: React.CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    overflow: "hidden",
+    opacity,
+    filter: blur > 0 ? `blur(${blur}px)` : undefined,
+    transform: blur > 0 ? "scale(1.06)" : undefined,
+    color: textColor,
+  };
   if (bg.kind === "image" && bg.src) {
     const src = img(bg.src);
     if (src) {
       return (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            overflow: "hidden",
-            background: "#000",
-            color: textColor,
-          }}
-        >
+        <div style={{ ...layerStyle, background: "#000" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={src}
@@ -705,28 +710,10 @@ function SlideBackground({
     // Unresolvable image falls through to the theme background.
   }
   if (bg.kind === "mesh" && bg.colors.length >= 2) {
-    return (
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          overflow: "hidden",
-          background: meshBackground(bg.colors),
-          color: textColor,
-        }}
-      />
-    );
+    return <div style={{ ...layerStyle, background: meshBackground(bg.colors, bg.angle) }} />;
   }
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        overflow: "hidden",
-        background: backgroundFor(theme, inverted),
-        color: inverted ? theme.fgAlt : theme.fg,
-      }}
-    >
+    <div style={{ ...layerStyle, background: backgroundFor(theme, inverted) }}>
       <Blob cW={cW} color={theme.accent} x={-15} y={-10} size={55} opacity={inverted ? 0.25 : 0.32} />
       <Blob cW={cW} color={theme.accent} x={70} y={75} size={45} opacity={inverted ? 0.18 : 0.25} />
     </div>
@@ -734,7 +721,8 @@ function SlideBackground({
 }
 
 // Layered radial gradients over a darkened base — the classic mesh look.
-export function meshBackground(colors: string[]): string {
+// Angle steers the base linear-gradient direction (degrees, default 160).
+export function meshBackground(colors: string[], angle = 160): string {
   const [c0, c1 = c0, c2 = c0] = colors;
   const c3 = colors[3] ?? c1;
   const base = shade(c0, -14);
@@ -742,7 +730,7 @@ export function meshBackground(colors: string[]): string {
     `radial-gradient(at 12% 6%, ${c1} 0%, transparent 55%)`,
     `radial-gradient(at 88% 14%, ${c2} 0%, transparent 52%)`,
     `radial-gradient(at 50% 105%, ${c3} 0%, transparent 60%)`,
-    `linear-gradient(160deg, ${base} 0%, ${shade(base, -10)} 100%)`,
+    `linear-gradient(${angle}deg, ${base} 0%, ${shade(base, -10)} 100%)`,
   ].join(", ");
 }
 
@@ -894,22 +882,25 @@ function SlideElements({
   const screenshot = resolveScreenshot(slide.screenshot, locale);
   const screenshotSecondary = resolveScreenshot(slide.screenshotSecondary, locale);
   const { cW, cH, Frame, frameAspect, defaults } = getSlideGeometry(slide, device, orientation);
-  // Static screens render one full-bleed image with no frames, caption, or
-  // text elements. Branching here covers SlideCanvas, DeckCanvas (preview +
-  // export), and thumbnails in one place.
+  const inverted = !!slide.inverted;
+  // Static screens render one full-bleed image plus any overlay text
+  // elements — no frames or caption. Branching here covers SlideCanvas,
+  // DeckCanvas (preview + export), and thumbnails in one place.
   if (slide.layout === "static") {
     return (
-      <StaticImage
-        slide={slide}
-        locale={locale}
-        x={screenX}
-        cW={cW}
-        cH={cH}
-        hideEmpty={hideEmpty}
-      />
+      <>
+        <StaticImage
+          slide={slide}
+          locale={locale}
+          x={screenX}
+          cW={cW}
+          cH={cH}
+          hideEmpty={hideEmpty}
+        />
+        {(slide.textElements || []).map(renderTextElement)}
+      </>
     );
   }
-  const inverted = !!slide.inverted;
   const captionRect = rectFor("caption", slide, defaults);
   const deviceRect = rectFor("device", slide, defaults);
   const secondaryRect = rectFor("deviceSecondary", slide, defaults);

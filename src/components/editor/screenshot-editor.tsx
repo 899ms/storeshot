@@ -80,8 +80,11 @@ export function ScreenshotEditor() {
   // Translation source is always the default locale ("en"). All AI
   // translation reads English copy and writes to the target locale.
   const translationSourceLocale = DEFAULT_LOCALE;
-  // Screens that carry localizable text (static image screens have none).
-  const translatableCount = currentSlides.filter((s) => s.layout !== "static").length;
+  // Screens that carry localizable text: everything except static screens
+  // without overlay texts (static label/headline slots don't render).
+  const translatableCount = currentSlides.filter(
+    (s) => s.layout !== "static" || (s.textElements || []).length > 0,
+  ).length;
 
   // Translate every screen of the current device deck into the currently
   // selected locale. Single setState so the run is one undo step.
@@ -954,8 +957,6 @@ export function ScreenshotEditor() {
         }
         onHeadlineFontChange={(family) => setState((p) => ({ ...p, headlineFont: family }))}
         onLabelFontChange={(family) => setState((p) => ({ ...p, labelFont: family }))}
-        background={state.background}
-        onBackgroundChange={(background) => setState((p) => ({ ...p, background }))}
       />
 
       <TranslateDialog

@@ -147,5 +147,5 @@ export const LAYOUT_HINT: Record<SlideLayout, string> = {
   "device-top": "Flipped — device on top",
   "two-devices": "Layered back + front phones",
   "no-device": "Big standalone headline",
-  static: "Full-bleed image, no frames or text",
+  static: "Full-bleed image + overlay texts",
 };

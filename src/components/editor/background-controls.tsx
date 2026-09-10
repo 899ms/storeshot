@@ -1,17 +1,11 @@
 "use client";
 import * as React from "react";
-import { Plus, X } from "lucide-react";
+import { Image as ImageIcon, Layers, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { ScreenBackground } from "@/lib/types";
+import { Slider } from "@/components/ui/slider";
+import type { BackgroundStyle, ScreenBackground } from "@/lib/types";
 import { MESH_PRESETS, type MeshPresetTone } from "@/lib/mesh-presets";
 import { meshBackground } from "./slide-canvas";
 import { ScreenshotPicker } from "./screenshot-picker";
@@ -24,6 +18,16 @@ type Mode = "default" | "theme" | "mesh" | "image";
 function modeOf(value: ScreenBackground | undefined): Mode {
   if (!value) return "default";
   return value.kind;
+}
+
+// Style tweaks carried across mode switches and kind edits so adjusting
+// opacity then picking a preset doesn't wipe the adjustments.
+function styleOf(value: ScreenBackground | undefined): BackgroundStyle {
+  const style: BackgroundStyle = {};
+  if (value?.opacity !== undefined) style.opacity = value.opacity;
+  if (value?.blur !== undefined) style.blur = value.blur;
+  if (value?.angle !== undefined) style.angle = value.angle;
+  return style;
 }
 
 // Shared background editor used by Settings (project default) and the
@@ -39,12 +43,13 @@ export function BackgroundEditor({
   onChange: (v: ScreenBackground | undefined) => void;
 }) {
   const mode = modeOf(value);
+  const style = styleOf(value);
 
   function setMode(next: Mode) {
     if (next === "default") {
       onChange(undefined);
     } else if (next === "theme") {
-      onChange({ kind: "theme" });
+      onChange({ kind: "theme", ...style });
     } else if (next === "mesh") {
       onChange({
         kind: "mesh",
@@ -52,42 +57,139 @@ export function BackgroundEditor({
           value?.kind === "mesh" && value.colors.length >= 2
             ? value.colors.slice(0, 4)
             : [...DEFAULT_MESH_COLORS],
+        ...style,
       });
     } else {
       onChange({
         kind: "image",
         src: value?.kind === "image" ? value.src : "",
+        ...style,
       });
     }
   }
+
+  const modes: { id: Mode; label: string; icon: typeof Layers }[] = [
+    ...(showDefault ? [{ id: "default" as const, label: "Default", icon: RotateCcw }] : []),
+    { id: "mesh" as const, label: "Mesh", icon: Layers },
+    { id: "image" as const, label: "Image", icon: ImageIcon },
+  ];
 
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
         <Label className="text-xs">Background</Label>
-        <Select value={mode} onValueChange={(v) => setMode(v as Mode)}>
-          <SelectTrigger aria-label="Background type">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {showDefault && <SelectItem value="default">Project default</SelectItem>}
-            <SelectItem value="theme">Theme gradient</SelectItem>
-            <SelectItem value="mesh">Mesh gradient</SelectItem>
-            <SelectItem value="image">Image</SelectItem>
-          </SelectContent>
-        </Select>
+        <div
+          role="radiogroup"
+          aria-label="Background type"
+          className="grid gap-1"
+          style={{ gridTemplateColumns: `repeat(${modes.length}, minmax(0, 1fr))` }}
+        >
+          {modes.map((m) => {
+            const selected = mode === m.id;
+            const Icon = m.icon;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setMode(m.id)}
+                className={
+                  selected
+                    ? "flex flex-col items-center gap-0.5 rounded-md border border-primary bg-primary/10 px-1 py-1.5 text-foreground ring-1 ring-primary/40"
+                    : "flex flex-col items-center gap-0.5 rounded-md border border-border/70 px-1 py-1.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                }
+              >
+                <Icon className="h-4 w-4" />
+                <span className="text-[10px] font-medium leading-none">{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {value?.kind === "mesh" && (
-        <MeshEditor colors={value.colors} onChange={(colors) => onChange({ kind: "mesh", colors })} />
+        <MeshEditor
+          colors={value.colors}
+          angle={value.angle}
+          onChange={(colors) => onChange({ kind: "mesh", colors, ...style })}
+        />
       )}
 
       {value?.kind === "image" && (
         <ScreenshotPicker
           label="Background image"
           value={value.src}
-          onChange={(src) => onChange({ kind: "image", src })}
+          onChange={(src) => onChange({ kind: "image", src, ...style })}
         />
+      )}
+
+      {value && (
+        <Adjustments
+          value={value}
+          onPatch={(patch) => onChange({ ...value, ...patch })}
+        />
+      )}
+    </div>
+  );
+}
+
+function Adjustments({
+  value,
+  onPatch,
+}: {
+  value: ScreenBackground;
+  onPatch: (patch: BackgroundStyle) => void;
+}) {
+  const opacityPct = Math.round((value.opacity ?? 1) * 100);
+  const blur = value.blur ?? 0;
+  const angle = value.angle ?? 160;
+
+  return (
+    <div className="space-y-2 rounded-md border border-border/70 p-2">
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <Label className="text-[11px] text-muted-foreground">Opacity</Label>
+          <span className="text-[11px] tabular-nums text-muted-foreground">{opacityPct}%</span>
+        </div>
+        <Slider
+          min={10}
+          max={100}
+          step={1}
+          value={[opacityPct]}
+          onValueChange={([v]) => onPatch({ opacity: (v ?? 100) / 100 })}
+          aria-label="Background opacity"
+        />
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <Label className="text-[11px] text-muted-foreground">Blur</Label>
+          <span className="text-[11px] tabular-nums text-muted-foreground">{blur}px</span>
+        </div>
+        <Slider
+          min={0}
+          max={40}
+          step={1}
+          value={[blur]}
+          onValueChange={([v]) => onPatch({ blur: v ?? 0 })}
+          aria-label="Background blur"
+        />
+      </div>
+      {value.kind === "mesh" && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <Label className="text-[11px] text-muted-foreground">Angle</Label>
+            <span className="text-[11px] tabular-nums text-muted-foreground">{angle}°</span>
+          </div>
+          <Slider
+            min={0}
+            max={360}
+            step={1}
+            value={[angle]}
+            onValueChange={([v]) => onPatch({ angle: v ?? 160 })}
+            aria-label="Mesh gradient angle"
+          />
+        </div>
       )}
     </div>
   );
@@ -95,9 +197,11 @@ export function BackgroundEditor({
 
 function MeshEditor({
   colors,
+  angle,
   onChange,
 }: {
   colors: string[];
+  angle?: number;
   onChange: (colors: string[]) => void;
 }) {
   const [tone, setTone] = React.useState<"all" | MeshPresetTone>("all");
@@ -116,7 +220,7 @@ function MeshEditor({
       <div
         aria-hidden
         className="h-16 w-full rounded-md border"
-        style={{ background: meshBackground(colors.length >= 2 ? colors : DEFAULT_MESH_COLORS) }}
+        style={{ background: meshBackground(colors.length >= 2 ? colors : DEFAULT_MESH_COLORS, angle) }}
       />
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">

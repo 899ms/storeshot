@@ -230,7 +230,7 @@ export function Inspector({
           </div>
         )}
 
-        {!isStatic && locales.length > 1 && (
+        {locales.length > 1 && (
           <ScreenTranslate
             slide={slide}
             locale={locale}
@@ -241,27 +241,24 @@ export function Inspector({
           />
         )}
 
-        {!isStatic && (
-          <ElementTransformControls
-            slide={slide}
-            device={device}
-            orientation={orientation}
-            locale={locale}
-            selectedElementId={selectedElementId}
-            onChange={onChange}
-            onSelectElement={onSelectElement}
-          />
-        )}
+        <ElementTransformControls
+          slide={slide}
+          device={device}
+          orientation={orientation}
+          locale={locale}
+          selectedElementId={selectedElementId}
+          textOnly={isStatic}
+          onChange={onChange}
+          onSelectElement={onSelectElement}
+        />
       </div>
     </div>
   );
 }
 
-// Re-translate the current screen's texts into one target locale.
-// Overwrites the target (it's an explicit re-translate); the run applies as
-// a single onChange so Ctrl+Z restores the previous texts. Hidden for static
 // One-tap translate for the right sidebar: translates this screen from en to
 // the current editing locale. No options — always overwrites the target.
+// Static screens contribute their overlay texts (they carry no label/headline).
 function ScreenTranslate({
   slide,
   locale,
@@ -380,6 +377,7 @@ function ElementTransformControls({
   orientation,
   locale,
   selectedElementId,
+  textOnly,
   onChange,
   onSelectElement,
 }: {
@@ -388,12 +386,16 @@ function ElementTransformControls({
   orientation: Orientation;
   locale: string;
   selectedElementId: ElementId | null;
+  // Static screens expose overlay texts only — no caption/device rows.
+  textOnly?: boolean;
   onChange: (patch: Partial<Slide>) => void;
   onSelectElement: (id: ElementId | null) => void;
 }) {
-  const present: ElementId[] = ["caption"];
-  if (slide.layout !== "no-device") present.push("device");
-  if (slide.layout === "two-devices") present.push("deviceSecondary");
+  const present: ElementId[] = textOnly
+    ? []
+    : (["caption"] as ElementId[]);
+  if (!textOnly && slide.layout !== "no-device") present.push("device");
+  if (!textOnly && slide.layout === "two-devices") present.push("deviceSecondary");
   for (const element of slide.textElements || []) present.push(toTextElementId(element.id));
 
   const transforms = slide.transforms || {};

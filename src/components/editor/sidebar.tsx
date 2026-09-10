@@ -140,7 +140,7 @@ export function Sidebar({
           variant="outline"
           onClick={() => onAdd(newSlide("static"))}
           disabled={disabled}
-          title="Add a static full-bleed image screen (no frames or text)"
+          title="Add a static full-bleed image screen (overlay texts allowed)"
           aria-label="Add static screen"
         >
           <ImagePlus className="h-4 w-4" />

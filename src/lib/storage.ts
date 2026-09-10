@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PROJECT_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
 import { DEFAULT_PROJECT, makeEmptyProject } from "./defaults";
 import { coerceLocalized } from "./locale";
-import type { Device, ElementTransform, ProjectState, ScreenBackground, Slide, TextElement } from "./types";
+import type { BackgroundStyle, Device, ElementTransform, ProjectState, ScreenBackground, Slide, TextElement } from "./types";
 
 const HISTORY_LIMIT = 50;
 // Coalesce rapid edits (typing, slider drags) into a single undo step.
@@ -17,24 +17,37 @@ function cleanHex(value: unknown): string | undefined {
   return /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(v) ? v : undefined;
 }
 
+function cleanNumber(value: unknown, min: number, max: number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.min(max, Math.max(min, value));
+}
+
 // Normalize a persisted background value. Unknown shapes, empty image
 // sources, and bad colors fall back to the theme background so old and
 // hand-edited project files always render.
 function cleanBackground(value: unknown): ScreenBackground | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const raw = value as Partial<ScreenBackground> & { colors?: unknown; src?: unknown };
+  // Optional style tweaks shared by every kind; invalid entries are dropped.
+  const style: BackgroundStyle = {};
+  const opacity = cleanNumber(raw.opacity, 0, 1);
+  if (opacity !== undefined) style.opacity = opacity;
+  const blur = cleanNumber(raw.blur, 0, 40);
+  if (blur !== undefined) style.blur = blur;
+  const angle = cleanNumber(raw.angle, 0, 360);
+  if (angle !== undefined) style.angle = angle;
   if (raw.kind === "mesh") {
     const colors = Array.isArray(raw.colors)
       ? raw.colors.map(cleanHex).filter((c): c is string => !!c)
       : [];
     if (colors.length < 2) return undefined;
-    return { kind: "mesh", colors: colors.slice(0, 4) };
+    return { kind: "mesh", colors: colors.slice(0, 4), ...style };
   }
   if (raw.kind === "image") {
     if (typeof raw.src !== "string" || !raw.src.trim()) return undefined;
-    return { kind: "image", src: raw.src };
+    return { kind: "image", src: raw.src, ...style };
   }
-  if (raw.kind === "theme") return { kind: "theme" };
+  if (raw.kind === "theme") return { kind: "theme", ...style };
   return undefined;
 }
 

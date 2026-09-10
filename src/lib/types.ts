@@ -11,15 +11,23 @@ export type SlideLayout =
   | "device-top"       // device top, headline bottom (contrast)
   | "two-devices"      // back + front phones, headline above
   | "no-device"        // big headline + decorative blob, no device
-  | "static";          // full-bleed image only, no frames or texts
+  | "static";          // full-bleed image only, no frames or caption (overlay texts allowed)
 
 // Screen background. "theme" is the default gradient + accent blobs derived
 // from the active theme; "mesh" is a multi-color mesh gradient; "image" is a
 // cover-fit background image (workspace-relative path or data URL).
-export type ScreenBackground =
+// Style fields are optional tweaks: opacity dims the layer (0..1), blur
+// softens it (px), angle sets the mesh base-gradient direction (degrees).
+export type BackgroundStyle = {
+  opacity?: number;
+  blur?: number;
+  angle?: number;
+};
+export type ScreenBackground = (
   | { kind: "theme" }
   | { kind: "mesh"; colors: string[] }
-  | { kind: "image"; src: string };
+  | { kind: "image"; src: string }
+) & BackgroundStyle;
 
 // Per-element rect in canvas pixel space. Optional rotation in degrees and zIndex.
 export type ElementTransform = {

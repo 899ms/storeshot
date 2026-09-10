@@ -59,17 +59,18 @@ function collectSources(
 ): SourceSlide[] {
   const out: SourceSlide[] = [];
   for (const slide of slides) {
-    // Static screens contain no texts — translations ignore them.
-    if (slide.layout === "static") continue;
+    // Static screens carry no label/headline — only overlay texts.
     const entry: SourceSlide = { id: slide.id };
     // Only send units that actually need translation: non-empty in the
     // source and (empty in the target, unless overwriting).
-    const labelSrc = pickText(slide.label, sourceLocale).trim();
-    const labelHas = (slide.label?.[targetLocale] || "").trim().length > 0;
-    if (labelSrc && (overwrite || !labelHas)) entry.label = labelSrc;
-    const headlineSrc = pickText(slide.headline, sourceLocale).trim();
-    const headlineHas = (slide.headline?.[targetLocale] || "").trim().length > 0;
-    if (headlineSrc && (overwrite || !headlineHas)) entry.headline = headlineSrc;
+    if (slide.layout !== "static") {
+      const labelSrc = pickText(slide.label, sourceLocale).trim();
+      const labelHas = (slide.label?.[targetLocale] || "").trim().length > 0;
+      if (labelSrc && (overwrite || !labelHas)) entry.label = labelSrc;
+      const headlineSrc = pickText(slide.headline, sourceLocale).trim();
+      const headlineHas = (slide.headline?.[targetLocale] || "").trim().length > 0;
+      if (headlineSrc && (overwrite || !headlineHas)) entry.headline = headlineSrc;
+    }
     const texts: Record<string, string> = {};
     for (const el of slide.textElements || []) {
       const src = pickText(el.text, sourceLocale).trim();
