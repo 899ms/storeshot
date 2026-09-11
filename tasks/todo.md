@@ -46,3 +46,15 @@
 
 ## Checkpoint: Complete
 - [x] All acceptance criteria met; build + typecheck + lint + test green
+
+## Electron (StoreShot, macOS)
+- [x] Task E1: Standalone server output + parity verification
+- [x] Task E2: Electron shell (main, preload, window, scripts, deps)
+- [x] Task E3: Native workspace picker (Powerbox-ready)
+- [x] Checkpoint: shell boots to editor, single-instance, error paths (dev-server mode)
+- [x] Task E4: electron-builder dmg config + icon generation (real 2048px artwork baked into icon.icns + .app bundle)
+- [x] Task E5: Auto-updater wiring (dormant feed)
+- [x] Checkpoint: unsigned .app verified (server unpacked, icon, identity); dmg assembly needs a Mac outside the sandbox (`npm run dist:mac`)
+- [x] Task E6 prep: entitlements + signing doc (build/macos-signing.md); actual sign/notarize on user machine
+- [x] Task E7 prep: mas config + sandbox entitlements + submission notes; sandboxed .pkg verify on user machine
+- [ ] Checkpoint: Gatekeeper-clean dmg; sandboxed MAS pkg (runs on user machine)

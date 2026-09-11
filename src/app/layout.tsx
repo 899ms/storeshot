@@ -5,8 +5,8 @@ import "./globals.css";
 const font = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "App Store Screenshots",
-  description: "Design and export iPhone App Store screenshots.",
+  title: "StoreShot",
+  description: "Design and export App Store screenshots with StoreShot.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

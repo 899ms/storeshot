@@ -409,6 +409,14 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
       setError("Enter a folder path");
       return;
     }
+    await activateValidatedPath(trimmed);
+  }
+
+  // Validate through the server, then activate. Shared by the manual path
+  // entry and the native (Electron) folder picker.
+  async function activateValidatedPath(raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
     setPending(true);
     setError(null);
     try {
@@ -430,6 +438,25 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPending(false);
+    }
+  }
+
+  // Packaged (Electron) builds pick folders through the native dialog so the
+  // choice carries a sandbox Powerbox grant. Web builds use the in-app
+  // browser below instead.
+  async function pickWorkspaceNative() {
+    const pick = window.storeshot?.pickWorkspace;
+    if (!pick) {
+      openBrowser(active ?? undefined);
+      return;
+    }
+    setMenuOpen(false);
+    setError(null);
+    try {
+      const dir = await pick();
+      if (dir) await activateValidatedPath(dir);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -516,16 +543,29 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
             </div>
           ))}
           {recents.length > 0 && <DropdownMenuSeparator />}
-          <DropdownMenuItem
-            onSelect={() => {
-              openBrowser(active ?? undefined);
-            }}
-          >
-            <span className="flex w-full items-center gap-2">
-              <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
-              Open folder…
-            </span>
-          </DropdownMenuItem>
+          {typeof window !== "undefined" && window.storeshot?.pickWorkspace ? (
+            <DropdownMenuItem
+              onSelect={() => {
+                void pickWorkspaceNative();
+              }}
+            >
+              <span className="flex w-full items-center gap-2">
+                <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                Open folder…
+              </span>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onSelect={() => {
+                openBrowser(active ?? undefined);
+              }}
+            >
+              <span className="flex w-full items-center gap-2">
+                <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                Open folder…
+              </span>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
