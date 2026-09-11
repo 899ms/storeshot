@@ -15,6 +15,19 @@ import type {
 } from "@/lib/types";
 import { DeckCanvas, getCanvas } from "./slide-canvas";
 
+const ZOOM_KEY = "screenshots.zoom";
+
+function loadZoom(device: Device): number {
+  if (typeof window === "undefined") return 1;
+  try {
+    const n = Number(window.localStorage.getItem(`${ZOOM_KEY}:${device}`));
+    if (Number.isFinite(n)) return Math.min(2, Math.max(0.25, n));
+  } catch {
+    // storage unavailable — fall through to the default zoom
+  }
+  return 1;
+}
+
 type Props = {
   slides: Slide[];
   activeSlideId: string | null;
@@ -58,7 +71,7 @@ export function PreviewStage({
   const scrollerRef = React.useRef<HTMLDivElement>(null);
   const suppressNextActiveScreenPanRef = React.useRef(false);
   const [fitScale, setFitScale] = React.useState(0.2);
-  const [zoom, setZoom] = React.useState(1);
+  const [zoom, setZoom] = React.useState(() => loadZoom(device));
   const { cW, cH } = getCanvas(device);
   const totalW = Math.max(1, slides.length) * cW;
   const scale = fitScale * zoom;
@@ -80,9 +93,18 @@ export function PreviewStage({
     return () => ro.disconnect();
   }, [cW, cH]);
 
+  // Zoom persists per device across reloads and device switches.
   React.useEffect(() => {
-    setZoom(1);
+    setZoom(loadZoom(device));
   }, [device]);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(`${ZOOM_KEY}:${device}`, String(zoom));
+    } catch {
+      // storage unavailable (private mode etc.) — zoom still applies
+    }
+  }, [zoom, device]);
 
   React.useEffect(() => {
     if (suppressNextActiveScreenPanRef.current) {

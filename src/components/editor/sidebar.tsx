@@ -20,7 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { Device, ScreenBackground, Slide, Theme } from "@/lib/types";
 import { newSlide } from "@/lib/defaults";
+import { useActiveWorkspace } from "@/lib/workspaces";
 import { SlideThumb } from "./slide-thumb";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 type Props = {
   slides: Slide[];
@@ -71,8 +73,21 @@ export function Sidebar({
     onReorder(arrayMove(slides, oldIdx, newIdx));
   };
 
+  const activeWorkspace = useActiveWorkspace();
+
   return (
     <div className="flex h-full flex-col">
+      <div className="border-b bg-background px-3 py-2.5">
+        <h2 className="text-sm font-semibold">Workspace</h2>
+        <div className="mt-1.5">
+          <WorkspaceSwitcher disabled={disabled} />
+        </div>
+        {activeWorkspace ? (
+          <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground" title={activeWorkspace}>
+            {activeWorkspace}
+          </p>
+        ) : null}
+      </div>
       <div className="border-b bg-background px-3 py-2.5">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">Screens</h2>

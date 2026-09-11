@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PROJECT_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
 import { DEFAULT_PROJECT, makeEmptyProject } from "./defaults";
+import { workspaceName } from "./workspaces";
 import { coerceLocalized } from "./locale";
 import { clearImageCache } from "./image-cache";
 import type { BackgroundStyle, Device, ElementTransform, ProjectState, ScreenBackground, Slide, TextElement } from "./types";
@@ -300,6 +301,14 @@ function applyUpdater(updater: Updater, prev: ProjectState): ProjectState {
   return typeof updater === "function" ? updater(prev) : updater;
 }
 
+// Backfill for projects that were never named (the rename control is
+// hidden): label them with the workspace folder name. Named projects pass
+// through untouched.
+function withDirectoryName(state: ProjectState, workspace: string): ProjectState {
+  if (state.appName.trim()) return state;
+  return { ...state, appName: workspaceName(workspace) };
+}
+
 export function useProject(workspace: string | null) {
   const [state, _setState] = useState<ProjectState>(DEFAULT_PROJECT);
   const [hydrated, setHydrated] = useState(false);
@@ -348,16 +357,17 @@ export function useProject(workspace: string | null) {
     }
     const cached = loadFromLocalStorage(workspace);
     // A workspace we've never seen starts blank — never show another
-    // workspace's screens there.
-    const fresh = makeEmptyProject();
-    _setState(cached ?? fresh);
+    // workspace's screens there. Unnamed projects take the folder name so
+    // imports are labeled without a rename step.
+    const fresh = withDirectoryName(makeEmptyProject(), workspace);
+    _setState(cached ? withDirectoryName(cached, workspace) : fresh);
 
     void (async () => {
       const fromFile = await loadFromFile(workspace);
       if (cancelled) return;
       if (fromFile.ok) {
         if (fromFile.state) {
-          _setState(fromFile.state);
+          _setState(withDirectoryName(fromFile.state, workspace));
         } else if (!cached) {
           _setState(fresh);
         }
@@ -452,8 +462,13 @@ export function useProject(workspace: string | null) {
   }, []);
 
   const reset = useCallback(() => {
-    setState(DEFAULT_PROJECT);
-  }, [setState]);
+    // The rename control is hidden, so a reset must never clobber the
+    // project name — keep it, falling back to the folder name.
+    setState((prev) => ({
+      ...DEFAULT_PROJECT,
+      appName: prev.appName.trim() || (workspace ? workspaceName(workspace) : ""),
+    }));
+  }, [setState, workspace]);
 
   const resetDevice = useCallback((device: Device) => {
     setState((prev) => ({

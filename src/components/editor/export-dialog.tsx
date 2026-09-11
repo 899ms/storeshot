@@ -48,7 +48,30 @@ type Props = {
   currentLocale: string;
   onStartExport: (config: ExportConfig) => void;
   exporting: string | null;
+  workspace: string | null;
 };
+
+const EXPORT_PREFS_KEY = "screenshots.export-prefs";
+const FOLDER_PRESETS: FolderPreset[] = ["standard", "fastlane", "flat"];
+const STORES: StoreKind[] = ["apple", "google"];
+
+function loadExportPrefs(workspace: string | null): Record<string, unknown> {
+  if (!workspace || typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(`${EXPORT_PREFS_KEY}:${workspace}`);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function stringList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const list = value.filter((x): x is string => typeof x === "string");
+  return list.length === value.length ? list : null;
+}
 
 export function ExportDialog({
   open,
@@ -58,11 +81,19 @@ export function ExportDialog({
   currentLocale,
   onStartExport,
   exporting,
+  workspace,
 }: Props) {
+  // Stored prefs for this workspace (each read is cheap; mount-only use).
+  const storedPrefs = React.useMemo(() => loadExportPrefs(workspace), [workspace]);
+
   // Default selected targets: all targets marked defaultSelected
-  const [selectedTargetIds, setSelectedTargetIds] = React.useState<string[]>(() =>
-    EXPORT_TARGETS.filter((t) => t.defaultSelected).map((t) => t.id),
-  );
+  const [selectedTargetIds, setSelectedTargetIds] = React.useState<string[]>(() => {
+    const valid = new Set(EXPORT_TARGETS.map((t) => t.id));
+    const saved = stringList(storedPrefs.selectedTargetIds)?.filter((id) => valid.has(id));
+    return saved && saved.length > 0
+      ? saved
+      : EXPORT_TARGETS.filter((t) => t.defaultSelected).map((t) => t.id);
+  });
 
   // Only store locales are exported: the "en"/"es" source languages are
   // never emitted, and folders follow the selected store's codes.
@@ -73,20 +104,64 @@ export function ExportDialog({
 
   // Default selected locales: all project locales
   const [selectedLocales, setSelectedLocales] = React.useState<string[]>(() =>
-    locales.filter((l) => exportFolderForLocale(l) !== null),
+    stringList(storedPrefs.selectedLocales) ?? locales.filter((l) => exportFolderForLocale(l) !== null),
   );
 
   // Default selected slides: all slides
   const [selectedSlideIds, setSelectedSlideIds] = React.useState<string[]>(() =>
-    slides.map((s) => s.id),
+    stringList(storedPrefs.selectedSlideIds) ?? slides.map((s) => s.id),
   );
 
   // Folder packaging preset
-  const [folderPreset, setFolderPreset] = React.useState<FolderPreset>("standard");
+  const [folderPreset, setFolderPreset] = React.useState<FolderPreset>(() =>
+    typeof storedPrefs.folderPreset === "string" &&
+    (FOLDER_PRESETS as string[]).includes(storedPrefs.folderPreset)
+      ? (storedPrefs.folderPreset as FolderPreset)
+      : "standard",
+  );
 
   // Target store: locale folder names follow App Store Connect or
   // Google Play codes (they differ, e.g. sl-SI vs sl).
-  const [store, setStore] = React.useState<StoreKind>("apple");
+  const [store, setStore] = React.useState<StoreKind>(() =>
+    typeof storedPrefs.store === "string" && (STORES as string[]).includes(storedPrefs.store)
+      ? (storedPrefs.store as StoreKind)
+      : "apple",
+  );
+
+  // Adopt the new workspace's stored prefs on switch (without clobbering
+  // them first); persist every change otherwise.
+  const prefsWorkspaceRef = React.useRef<string | null>(workspace);
+  React.useEffect(() => {
+    if (!workspace) return;
+    if (prefsWorkspaceRef.current !== workspace) {
+      prefsWorkspaceRef.current = workspace;
+      const valid = new Set(EXPORT_TARGETS.map((t) => t.id));
+      const targets = stringList(storedPrefs.selectedTargetIds)?.filter((id) => valid.has(id));
+      if (targets && targets.length > 0) setSelectedTargetIds(targets);
+      if (
+        typeof storedPrefs.folderPreset === "string" &&
+        (FOLDER_PRESETS as string[]).includes(storedPrefs.folderPreset)
+      ) {
+        setFolderPreset(storedPrefs.folderPreset as FolderPreset);
+      }
+      if (typeof storedPrefs.store === "string" && (STORES as string[]).includes(storedPrefs.store)) {
+        setStore(storedPrefs.store as StoreKind);
+      }
+      const savedLocales = stringList(storedPrefs.selectedLocales);
+      if (savedLocales) setSelectedLocales(savedLocales);
+      const savedSlides = stringList(storedPrefs.selectedSlideIds);
+      if (savedSlides) setSelectedSlideIds(savedSlides);
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        `${EXPORT_PREFS_KEY}:${workspace}`,
+        JSON.stringify({ selectedTargetIds, selectedLocales, selectedSlideIds, folderPreset, store }),
+      );
+    } catch {
+      // storage unavailable — prefs simply won't be restored
+    }
+  }, [workspace, storedPrefs, selectedTargetIds, selectedLocales, selectedSlideIds, folderPreset, store]);
 
   // Keep state synced when props change. Reopening reconciles with the
   // live deck: deleted slides/locales drop out, newly added ones join, so

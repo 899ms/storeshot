@@ -12,7 +12,7 @@ import { detectPlatform, newSlide, nid } from "@/lib/defaults";
 import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/elements";
 import { preloadImages } from "@/lib/image-cache";
 import { exportFolderForLocale, resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
-import { reportError, useErrorLog } from "@/lib/error-log";
+import { reportError } from "@/lib/error-log";
 import { ensureFontsLoaded, fontsReadyWithTimeout } from "@/lib/fonts";
 import { useProject } from "@/lib/storage";
 import { activeProvider, useAppSettings } from "@/lib/app-settings";
@@ -82,7 +82,6 @@ export function ScreenshotEditor() {
   const workspace = useActiveWorkspace();
   const { state, setState, hydrated, savedAt, saveError, saving, saveNow, reset, resetDevice, undo, redo } =
     useProject(workspace);
-  const { unread: errorUnread } = useErrorLog();
   const [errorLogOpen, setErrorLogOpen] = React.useState(false);
   // Tracks save errors already surfaced by the manual-save handler so the
   // autosave effect below doesn't toast twice for the same failure.
@@ -206,12 +205,43 @@ export function ScreenshotEditor() {
     }
   }, [activeSlide?.id, selectedElement]);
 
+  // Restore the last-selected screen per workspace + device across
+  // reloads. Stored ids are validated against the live deck; anything stale
+  // falls back to today's behavior (first screen).
+  const screenKeyRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !workspace) return;
+    const key = `${workspace}::${state.device}`;
+    if (screenKeyRef.current !== key) {
+      screenKeyRef.current = key;
+      let stored: string | null = null;
+      try {
+        stored = window.localStorage.getItem(`screenshots.selected-screen:${key}`);
+      } catch {
+        // storage unavailable — fall through to default selection
+      }
+      if (stored && currentSlides.some((s) => s.id === stored)) {
+        setActiveSlideId(stored);
+        return;
+      }
+    }
     if (!activeSlide && currentSlides.length > 0) {
       setActiveSlideId(currentSlides[0].id);
     }
-  }, [hydrated, currentSlides, activeSlide]);
+  }, [hydrated, workspace, state.device, currentSlides, activeSlide]);
+
+  // Persist the selection so the next visit reopens on the same screen.
+  React.useEffect(() => {
+    if (!hydrated || !workspace || !activeSlideId) return;
+    try {
+      window.localStorage.setItem(
+        `screenshots.selected-screen:${workspace}::${state.device}`,
+        activeSlideId,
+      );
+    } catch {
+      // storage unavailable — selection simply won't be restored
+    }
+  }, [hydrated, workspace, state.device, activeSlideId]);
 
   React.useEffect(() => {
     if (hydrated && state.themeId && !hasTheme(state.themeId)) {
@@ -1206,12 +1236,8 @@ export function ScreenshotEditor() {
           toast.success(`Reset ${DEVICE_LABEL[state.device] ?? "iPhone"} screens to defaults`);
         }}
         exporting={exporting}
-        savedAt={savedAt}
-        saveError={saveError}
         saving={saving}
         onSave={() => void handleSaveNow()}
-        errorCount={errorUnread}
-        onOpenErrorLog={() => setErrorLogOpen(true)}
         busy={busy}
         onUndo={undo}
         onRedo={redo}
@@ -1293,6 +1319,7 @@ export function ScreenshotEditor() {
         currentLocale={state.locale}
         onStartExport={exportWithConfig}
         exporting={exporting}
+        workspace={workspace}
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden md:flex-row flex-col">
