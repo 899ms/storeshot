@@ -69,17 +69,21 @@ export function ScreenshotPicker({ label, value, locale, onChange }: Props) {
       return;
     }
     // Try to persist to disk so the screenshot survives a git clone.
-    // If the upload endpoint is unreachable (e.g. static export), fall back
-    // to the inline data URI — still works in the current session.
+    // If the upload endpoint is unreachable (e.g. static export), retry once
+    // and then refuse: persisting an inline data: URI would bloat the project
+    // file past server caps and break every save with quota errors.
     setUploading(true);
-    const uploadedPath = await uploadDataUrl(dataUrl);
+    let uploadedPath = await uploadDataUrl(dataUrl);
+    if (!uploadedPath) {
+      await new Promise((r) => setTimeout(r, 1000));
+      uploadedPath = await uploadDataUrl(dataUrl);
+    }
     setUploading(false);
     if (uploadedPath) {
       setImage(uploadedPath, dataUrl);
       onChange(uploadedPath);
     } else {
-      setImage(dataUrl, dataUrl);
-      onChange(dataUrl);
+      setError("Upload failed — image not saved. Check the server and retry.");
     }
   }
 

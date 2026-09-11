@@ -1,9 +1,5 @@
 export type Device = "iphone" | "ipad";
 
-export type Orientation = "portrait";
-
-export type Platform = "ios";
-
 // Layouts the editor can render. Vary across slides for visual rhythm.
 export type SlideLayout =
   | "hero"             // centered device, headline above
@@ -109,7 +105,6 @@ export type ProjectState = {
   locales: string[];
   locale: string;
   device: Device;
-  orientation: Orientation;
   // Per-device slide decks so platform switching preserves work
   slidesByDevice: Record<Device, Slide[]>;
   // Caption typefaces (Google Fonts family names). Headline defaults to

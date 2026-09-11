@@ -1,6 +1,6 @@
 "use client";
-import { LOCALE_NAMES, pickText, writeLocalized } from "./locale";
-import type { Slide } from "./types";
+import { LOCALE_NAMES, writeLocalized } from "./locale";
+import type { LocalizedText, Slide } from "./types";
 
 // In-app translation via any OpenAI-compatible chat-completions endpoint
 // (OpenRouter by default). Static screens carry no text and are skipped.
@@ -15,12 +15,6 @@ export type SlideTranslation = {
   label?: string;
   headline?: string;
   texts?: Record<string, string>;
-};
-
-export type TranslateProgress = {
-  doneLocales: number;
-  totalLocales: number;
-  currentLocale: string | null;
 };
 
 export type TranslateCall = {
@@ -60,26 +54,51 @@ function collectSources(
   const out: SourceSlide[] = [];
   for (const slide of slides) {
     // Static screens carry no label/headline — only overlay texts.
+    // Source text is read from the exact source locale only: falling back to
+    // another language here would mistranslate (e.g. Spanish sent as English).
     const entry: SourceSlide = { id: slide.id };
     // Only send units that actually need translation: non-empty in the
     // source and (empty in the target, unless overwriting).
     if (slide.layout !== "static") {
-      const labelSrc = pickText(slide.label, sourceLocale).trim();
+      const labelSrc = (slide.label?.[sourceLocale] || "").trim();
       const labelHas = (slide.label?.[targetLocale] || "").trim().length > 0;
       if (labelSrc && (overwrite || !labelHas)) entry.label = labelSrc;
-      const headlineSrc = pickText(slide.headline, sourceLocale).trim();
+      const headlineSrc = (slide.headline?.[sourceLocale] || "").trim();
       const headlineHas = (slide.headline?.[targetLocale] || "").trim().length > 0;
       if (headlineSrc && (overwrite || !headlineHas)) entry.headline = headlineSrc;
     }
     const texts: Record<string, string> = {};
     for (const el of slide.textElements || []) {
-      const src = pickText(el.text, sourceLocale).trim();
+      const src = (el.text?.[sourceLocale] || "").trim();
       const has = (el.text?.[targetLocale] || "").trim().length > 0;
       if (src && (overwrite || !has)) texts[el.id] = src;
     }
     if (Object.keys(texts).length > 0) entry.texts = texts;
     if (entry.label !== undefined || entry.headline !== undefined || entry.texts) {
       out.push(entry);
+    }
+  }
+  return out;
+}
+
+export type SourceSkip = { slideId: string; field: string };
+
+// Fields that hold text in some locale but nothing in the source locale.
+// These are skipped by translation (never backfilled from another language)
+// and reported so empty source copy gets filled instead of silently dropped.
+export function findSourceSkips(slides: Slide[], sourceLocale: string): SourceSkip[] {
+  const hasAny = (field: LocalizedText | undefined) =>
+    Object.values(field || {}).some((v) => v && v.trim().length > 0);
+  const out: SourceSkip[] = [];
+  for (const slide of slides) {
+    const missing = (field: LocalizedText | undefined) =>
+      !(field?.[sourceLocale] || "").trim() && hasAny(field);
+    if (slide.layout !== "static") {
+      if (missing(slide.label)) out.push({ slideId: slide.id, field: "label" });
+      if (missing(slide.headline)) out.push({ slideId: slide.id, field: "headline" });
+    }
+    for (const el of slide.textElements || []) {
+      if (missing(el.text)) out.push({ slideId: slide.id, field: `text:${el.id}` });
     }
   }
   return out;
@@ -234,6 +253,23 @@ export function countPendingUnits(
   targetLocale: string,
 ): number {
   return collectSources(slides, sourceLocale, targetLocale, false).reduce(
+    (n, s) =>
+      n +
+      (s.label !== undefined ? 1 : 0) +
+      (s.headline !== undefined ? 1 : 0) +
+      Object.keys(s.texts || {}).length,
+    0,
+  );
+}
+
+// Count units actually sent when overwriting (bulk runs always overwrite).
+// Compared against received counts to detect model-dropped strings.
+export function countSentUnits(
+  slides: Slide[],
+  sourceLocale: string,
+  targetLocale: string,
+): number {
+  return collectSources(slides, sourceLocale, targetLocale, true).reduce(
     (n, s) =>
       n +
       (s.label !== undefined ? 1 : 0) +

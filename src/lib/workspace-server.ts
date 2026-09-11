@@ -5,6 +5,12 @@ import path from "node:path";
 // directory; the app keeps all of its own data inside a `screenshots/`
 // subfolder of the workspace (`screenshots/app-store-screenshots.json` and
 // `screenshots/uploads/`), so the rest of the user's project is untouched.
+//
+// TRUST MODEL (local-only tool, document-only by design): these endpoints
+// accept any absolute workspace path with no auth, so any process or page
+// that can reach localhost can read/write outside the project. Do NOT expose
+// this server beyond localhost or run it for multiple users. See README.md
+// ("Security model").
 
 export const PROJECT_FILENAME = "app-store-screenshots.json";
 export const UPLOADS_DIRNAME = "uploads";

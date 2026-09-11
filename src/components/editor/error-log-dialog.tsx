@@ -23,11 +23,14 @@ export function ErrorLogDialog({
 }) {
   const { entries, clear, markSeen } = useErrorLog();
   const [copied, setCopied] = React.useState(false);
+  // Two-step clear: first click arms, second confirms. Resets on close.
+  const [confirmingClear, setConfirmingClear] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
       markSeen();
       setCopied(false);
+      setConfirmingClear(false);
     }
   }, [open, markSeen]);
 
@@ -44,7 +47,7 @@ export function ErrorLogDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[70vh] max-w-lg flex-col overflow-hidden p-0 gap-0">
+      <DialogContent className="flex max-h-[70vh] max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0 gap-0 sm:max-w-lg">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle className="flex items-center gap-1.5 text-base font-bold">
             <Bug className="h-4 w-4 text-muted-foreground" /> Error log
@@ -92,13 +95,23 @@ export function ErrorLogDialog({
         <DialogFooter className="shrink-0 gap-2 border-t px-6 py-3 sm:justify-end">
           <Button
             type="button"
-            variant="ghost"
+            variant={confirmingClear ? "destructive" : "ghost"}
             size="sm"
             className="h-8 gap-1 text-xs text-muted-foreground hover:text-destructive"
             disabled={entries.length === 0}
-            onClick={clear}
+            onClick={() => {
+              if (confirmingClear) {
+                clear();
+                setConfirmingClear(false);
+              } else {
+                setConfirmingClear(true);
+              }
+            }}
+            onBlur={() => setConfirmingClear(false)}
+            title={confirmingClear ? "Click again to confirm clearing" : "Clear log"}
           >
-            <Trash2 className="h-3.5 w-3.5" /> Clear
+            <Trash2 className="h-3.5 w-3.5" />
+            {confirmingClear ? `Confirm clear (${entries.length})` : "Clear"}
           </Button>
           <Button
             type="button"

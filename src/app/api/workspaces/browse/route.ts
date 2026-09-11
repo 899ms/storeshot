@@ -39,9 +39,11 @@ export async function GET(req: Request) {
   try {
     names = await fs.readdir(canonical);
   } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    const status = code === "ENOENT" || code === "ENOTDIR" ? 404 : code === "EACCES" || code === "EPERM" ? 403 : 500;
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : String(e) },
-      { status: 403 },
+      { status },
     );
   }
 

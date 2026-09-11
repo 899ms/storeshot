@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { toast } from "sonner";
 import { Check, FlaskConical, Globe, KeyRound, Plus, Trash2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ import {
   type ProviderConfig,
 } from "@/lib/app-settings";
 import { getLocaleFlag, getLocaleLabel, LOCALE_NAMES } from "@/lib/locale";
-import { CURATED_FONTS, ensurePreviewFonts, fontStack } from "@/lib/fonts";
+import { CURATED_FONTS, ensureFontLoaded, fontStack } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -63,7 +64,7 @@ export function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[70vh] max-w-2xl flex-col overflow-hidden p-0 gap-0">
+      <DialogContent className="flex max-h-[70vh] max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0 gap-0 sm:max-w-2xl">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle className="text-base font-bold">Settings</DialogTitle>
           <DialogDescription className="text-xs">
@@ -276,11 +277,8 @@ function FontsTab({
   onHeadlineFontChange: (family: string) => void;
   onLabelFontChange: (family: string) => void;
 }) {
-  // Load every curated family once so each row previews in its own typeface.
-  React.useEffect(() => {
-    ensurePreviewFonts();
-  }, []);
-
+  // Preview fonts load lazily per visible row (see FontRow) instead of all
+  // 30 families up front.
   return (
     <div className="space-y-4">
       <FontPicker
@@ -335,48 +333,17 @@ function FontPicker({
         className="h-8 text-xs"
         disabled={disabled}
       />
-      <div
-        role="listbox"
-        aria-label={`${label} font`}
-        className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-1"
-      >
-        {filtered.map((f) => {
-          const selected = value === f.family;
-          return (
-            <button
-              key={f.family}
-              type="button"
-              role="option"
-              aria-selected={selected}
-              disabled={disabled}
-              onClick={() => onSelect(f.family)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition-colors disabled:opacity-40",
-                selected ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/60",
-              )}
-            >
-              <span
-                aria-hidden
-                className="w-10 shrink-0 text-center text-xl leading-none"
-                style={{ fontFamily: fontStack(f.family) }}
-              >
-                Ag
-              </span>
-              <span className="min-w-0 flex-1">
-                <span
-                  className="block truncate text-sm leading-tight"
-                  style={{ fontFamily: fontStack(f.family) }}
-                >
-                  {f.family}
-                </span>
-                <span className="block truncate text-[10px] text-muted-foreground">
-                  {f.blurb}
-                </span>
-              </span>
-              {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
-            </button>
-          );
-        })}
+      <div role="group" aria-label={`${label} font`} className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-1">
+        {filtered.map((f) => (
+          <FontRow
+            key={f.family}
+            family={f.family}
+            blurb={f.blurb}
+            selected={value === f.family}
+            disabled={disabled}
+            onSelect={() => onSelect(f.family)}
+          />
+        ))}
         {filtered.length === 0 && (
           <p className="px-2 py-4 text-center text-[11px] text-muted-foreground">
             No fonts match “{query}”.
@@ -384,6 +351,79 @@ function FontPicker({
         )}
       </div>
     </div>
+  );
+}
+
+function FontRow({
+  family,
+  blurb,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  family: string;
+  blurb: string;
+  selected: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+}) {
+  const ref = React.useRef<HTMLButtonElement>(null);
+  const [visible, setVisible] = React.useState(false);
+  // Load this family's stylesheet only once the row scrolls near the
+  // viewport — opening Fonts no longer downloads all 30 families.
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  React.useEffect(() => {
+    if (visible) void ensureFontLoaded(family);
+  }, [visible, family]);
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-pressed={selected}
+      disabled={disabled}
+      onClick={onSelect}
+      className={cn(
+        "flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition-colors disabled:opacity-40",
+        selected ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/60",
+      )}
+    >
+      <span
+        aria-hidden
+        className="w-10 shrink-0 text-center text-xl leading-none"
+        style={visible ? { fontFamily: fontStack(family) } : undefined}
+      >
+        Ag
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-sm leading-tight"
+          style={visible ? { fontFamily: fontStack(family) } : undefined}
+        >
+          {family}
+        </span>
+        <span className="block truncate text-[10px] text-muted-foreground">{blurb}</span>
+      </span>
+      {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
+    </button>
   );
 }
 
@@ -444,7 +484,17 @@ function LocalesTab({
                 <button
                   type="button"
                   className="text-muted-foreground hover:text-destructive disabled:opacity-40"
-                  onClick={() => onRemove(loc)}
+                  onClick={() => {
+                    onRemove(loc);
+                    toast(`Removed ${loc} from editor`, {
+                      description: "Saved texts are kept — re-add anytime to restore.",
+                      action: {
+                        label: "Undo",
+                        onClick: () => onAdd(loc),
+                      },
+                      duration: 6000,
+                    });
+                  }}
                   disabled={disabled}
                   title={`Remove ${loc}`}
                   aria-label={`Remove ${loc}`}
@@ -482,8 +532,19 @@ function LocalesTab({
               className="h-auto p-0 text-[11px] text-muted-foreground"
               disabled={disabled || locales.length <= 1}
               onClick={() => {
-                for (const l of locales) {
-                  if (l !== currentLocale) onRemove(l);
+                const removed = locales.filter((l) => l !== currentLocale);
+                for (const l of removed) onRemove(l);
+                if (removed.length > 0) {
+                  toast(`Removed ${removed.length} languages from editor`, {
+                    description: "Saved texts are kept — re-add anytime to restore.",
+                    action: {
+                      label: "Undo",
+                      onClick: () => {
+                        for (const l of removed) onAdd(l);
+                      },
+                    },
+                    duration: 6000,
+                  });
                 }
               }}
             >

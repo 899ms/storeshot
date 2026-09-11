@@ -67,8 +67,8 @@ export function getLocaleFlag(locale: string): string {
 }
 
 export const LOCALE_NAMES: Record<string, string> = {
-  en: "English (Default)",
-  es: "Spanish (Default)",
+  en: "English (source)",
+  es: "Spanish (source)",
   "ar-SA": "Arabic (Saudi Arabia)",
   ca: "Catalan",
   cs: "Czech",
@@ -153,10 +153,11 @@ const GOOGLE_FOLDER_OVERRIDES: Record<string, string> = {
   "zh-Hant": "zh-TW",
 };
 
-// Internal source codes that are not valid App Store locales. "en" is the
-// editing/translation source only — the store accepts en-US, en-GB, en-AU
-// and en-CA instead — so it is never exported.
-const NON_STORE_LOCALES = new Set(["en"]);
+// Internal source codes that are not valid store locales. "en" is the
+// editing/translation source only — the stores accept en-US, en-GB, en-AU
+// and en-CA instead — and legacy "es" is likewise source-only next to
+// es-ES/es-MX, so neither is ever exported.
+const NON_STORE_LOCALES = new Set(["en", "es"]);
 
 // Upload folder for a locale on the given store, or null when the locale
 // must not be exported.
@@ -164,6 +165,21 @@ export function exportFolderForLocale(locale: string, store: StoreKind = "apple"
   if (NON_STORE_LOCALES.has(locale)) return null;
   if (store === "google") return GOOGLE_FOLDER_OVERRIDES[locale] ?? locale;
   return ASC_FOLDER_OVERRIDES[locale] ?? locale;
+}
+
+// Whether a locale reads right-to-left (ar-SA, he). Drives dir/lang and
+// default alignment in canvas, thumbs, and exports.
+export function isRtlLocale(locale: string): boolean {
+  try {
+    const tag = locale.replace("_", "-");
+    const info = (new Intl.Locale(tag) as unknown as { textInfo?: { direction?: string } })
+      .textInfo;
+    if (info && typeof info.direction === "string") return info.direction === "rtl";
+  } catch {
+    // Intl.Locale unavailable — fall through to the prefix list below.
+  }
+  const lang = locale.split(/[-_]/)[0].toLowerCase();
+  return lang === "ar" || lang === "he";
 }
 
 // Read the value for `locale` from a localized field. Falls back to en, then to

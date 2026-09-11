@@ -82,12 +82,17 @@ function removeLegacyFontLinks() {
   });
 }
 
-// Preload every curated family so picker previews render in their own font.
-export function ensurePreviewFonts() {
-  if (typeof document === "undefined") return;
-  removeLegacyFontLinks();
-  injectLink("caption-fonts-preview", cssHref(CURATED_FONTS));
-  injected.add("caption-fonts-preview");
+// Settle document.fonts with a timeout so offline/slow exports never hang.
+export async function fontsReadyWithTimeout(timeoutMs = 6000): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts?.ready) return;
+  try {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  } catch {
+    // Fallback fonts render instead.
+  }
 }
 
 // Load one family (idempotent) and wait until it's usable, with a timeout so

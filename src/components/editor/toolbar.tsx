@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/select";
 import { DEVICE_LABEL } from "@/lib/constants";
 import { getLocaleFlag, getLocaleLabel } from "@/lib/locale";
-import type { Device, Orientation } from "@/lib/types";
+import type { Device } from "@/lib/types";
 import { ThemeToggle } from "./theme-toggle";
 
 type Props = {
@@ -49,8 +49,6 @@ type Props = {
   locales: string[];
   device: Device;
   setDevice?: (v: Device) => void;
-  orientation?: Orientation;
-  setOrientation?: (v: Orientation) => void;
   onExport: () => void;
   onOpenSettings: () => void;
   onOpenTranslate: () => void;
@@ -160,8 +158,8 @@ export function Toolbar(props: Props) {
             size="sm"
             className="h-8 gap-1.5 px-2.5 text-xs"
             onClick={props.onTranslateLocale}
-            title={`Translate all screens from English to ${props.locale}`}
-            aria-label={`Translate ${props.translatableCount} screens to ${props.locale}`}
+            title={`Translate all ${props.translatableCount} screens from English to ${props.locale} (overwrites existing)`}
+            aria-label={`Translate locale ${props.locale} (${props.translatableCount} screens)`}
             disabled={
               props.busy ||
               props.translatingLocale ||
@@ -174,15 +172,20 @@ export function Toolbar(props: Props) {
             ) : (
               <Languages className="h-4 w-4" />
             )}
-            {props.translatingLocale
-              ? "Translating…"
-              : `Translate ${props.translatableCount} Screen${props.translatableCount === 1 ? "" : "s"}`}
+            <span className="hidden sm:inline">
+              {props.translatingLocale
+                ? "Translating…"
+                : `Translate locale (${props.locale})`}
+            </span>
           </Button>
         )}
+        <span className="sr-only" role="status">
+          {props.translatingLocale ? `Translating screens to ${props.locale}…` : ""}
+        </span>
         </>
       )}
 
-      <div className="ml-auto flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-2">
         <SaveStatus savedAt={props.savedAt} saveError={props.saveError} saving={props.saving} />
         <Button
           type="button"
@@ -224,12 +227,12 @@ export function Toolbar(props: Props) {
           size="sm"
           className="h-8 gap-1.5 px-2.5 text-xs"
           onClick={props.onOpenTranslate}
-          title="Translate from English to all added locales"
-          aria-label="Translate All"
+          title="Translate all screens to all added locales"
+          aria-label="Translate all locales"
           disabled={props.busy}
         >
           <Languages className="h-4 w-4" />
-          Translate All
+          <span className="hidden sm:inline">Translate All</span>
         </Button>
         <Button
           variant="ghost"
@@ -322,7 +325,7 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
   const [browseLoading, setBrowseLoading] = React.useState(false);
   const [newName, setNewName] = React.useState("");
 
-  async function loadDir(dir?: string) {
+  const loadDir = React.useCallback(async (dir?: string) => {
     setBrowseLoading(true);
     setError(null);
     try {
@@ -353,7 +356,7 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
     } finally {
       setBrowseLoading(false);
     }
-  }
+  }, []);
 
   async function createFolder() {
     const name = newName.trim();
@@ -379,12 +382,15 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
 
   const refresh = React.useCallback(() => setRecents(getRecentWorkspaces()), []);
 
-  function openBrowser(initialDir?: string) {
-    setNewName("");
-    setError(null);
-    setOpenDialog(true);
-    void loadDir(initialDir);
-  }
+  const openBrowser = React.useCallback(
+    (initialDir?: string) => {
+      setNewName("");
+      setError(null);
+      setOpenDialog(true);
+      void loadDir(initialDir);
+    },
+    [loadDir],
+  );
 
   // The workspace gate (shown when no workspace is active) opens this dialog.
   React.useEffect(() => {
@@ -395,7 +401,7 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
     };
     window.addEventListener("open-workspace-dialog", handler);
     return () => window.removeEventListener("open-workspace-dialog", handler);
-  }, []);
+  }, [openBrowser]);
 
   async function openPath(raw: string) {
     const trimmed = raw.trim();

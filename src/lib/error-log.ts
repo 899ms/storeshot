@@ -24,13 +24,19 @@ function emit() {
   for (const l of listeners) l();
 }
 
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max - 1) + "…" : text;
+}
+
 export function reportError(source: string, message: string, detail?: string) {
   const entry: ErrorEntry = {
     id: `e_${Date.now().toString(36)}_${seq++}`,
     time: Date.now(),
     source,
-    message,
-    detail,
+    // Provider/library errors can be huge — cap so one entry can't bloat
+    // the log or the toast UI.
+    message: truncate(message, 500),
+    detail: detail === undefined ? undefined : truncate(detail, 2000),
   };
   entries = [entry, ...entries].slice(0, MAX_ENTRIES);
   unseen += 1;

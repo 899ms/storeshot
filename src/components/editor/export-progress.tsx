@@ -1,11 +1,9 @@
 "use client";
 import { Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
-
 type Props = {
   /** Progress string in "done/total" form (e.g. "3/24"). */
   progress: string;
-  onStop?: () => void;
 };
 
 function parseProgress(progress: string): { done: number; total: number } | null {

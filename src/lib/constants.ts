@@ -1,4 +1,4 @@
-import type { Device, Orientation, SlideLayout, Theme, ThemeId } from "./types";
+import type { Device, SlideLayout, Theme, ThemeId } from "./types";
 
 // ---------- Canvas dimensions (design at largest required resolution) ----------
 export const CANVAS: Record<Device, { w: number; h: number }> = {
@@ -14,11 +14,7 @@ export const EXPORT_SIZES: Record<Device, ExportSize[]> = {
   ipad: [{ label: '13" (2064 × 2752)', w: 2064, h: 2752 }],
 };
 
-export function supportsLandscape(_device?: Device): boolean {
-  return false;
-}
-
-export function getExportSizes(device: Device = "iphone", _orientation?: Orientation): ExportSize[] {
+export function getExportSizes(device: Device = "iphone"): ExportSize[] {
   return EXPORT_SIZES[device] || EXPORT_SIZES.iphone;
 }
 

@@ -11,10 +11,6 @@ export function nid(): string {
 export const DEFAULT_HEADLINE_FONT = "Nunito";
 export const DEFAULT_LABEL_FONT = "Inter";
 
-// Default screen background: the theme gradient (legacy — the Theme option
-// is no longer offered in the UI, but old projects still render it).
-export const DEFAULT_BACKGROUND = { kind: "theme" } as const;
-
 // A random pastel mesh preset — used as the background for new workspaces
 // so every fresh deck starts with a distinct look.
 export function randomMeshBackground(): ScreenBackground {
@@ -26,10 +22,9 @@ function en(text: string): Record<string, string> {
   return { en: text };
 }
 
-export function makeStarterSlides(device: Device = "iphone"): Slide[] {
+export function makeStarterSlides(_device: Device = "iphone"): Slide[] {
   // Text-only starters — all imagery comes from the user via the screenshot
   // pickers and is stored in the workspace's `screenshots/` folder.
-  void device;
   return [
     {
       id: nid(),
@@ -85,7 +80,6 @@ export const DEFAULT_PROJECT: ProjectState = {
   locales: ["en", "es"],
   locale: DEFAULT_LOCALE,
   device: "iphone",
-  orientation: "portrait",
   headlineFont: DEFAULT_HEADLINE_FONT,
   labelFont: DEFAULT_LABEL_FONT,
   background: randomMeshBackground(),
@@ -107,7 +101,6 @@ export function makeEmptyProject(): ProjectState {
     locales: ["en"],
     locale: "en",
     device: "iphone",
-    orientation: "portrait",
     headlineFont: DEFAULT_HEADLINE_FONT,
     labelFont: DEFAULT_LABEL_FONT,
     background: randomMeshBackground(),

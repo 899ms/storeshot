@@ -44,6 +44,7 @@ import { DEFAULT_LOCALE, pickText, writeLocalized } from "@/lib/locale";
 import {
   applyLocaleTranslations,
   translateSlidesForLocale,
+  findSourceSkips,
   TranslateError,
 } from "@/lib/translate";
 import type {
@@ -51,7 +52,6 @@ import type {
   Device,
   ElementId,
   ElementTransform,
-  Orientation,
   Slide,
   SlideLayout,
   TextElement,
@@ -63,10 +63,8 @@ import { getCanvas, getElementTransform } from "./slide-canvas";
 type Props = {
   slide: Slide;
   device: Device;
-  orientation: Orientation;
   locale: string;
   locales: string[];
-  sourceLocale: string;
   selectedElementId: ElementId | null;
   disabled?: boolean;
   onExportSlide?: () => void;
@@ -83,10 +81,8 @@ const ELEMENT_LABEL: Record<BuiltInElementId, string> = {
 export function Inspector({
   slide,
   device,
-  orientation,
   locale,
   locales,
-  sourceLocale,
   selectedElementId,
   disabled,
   onExportSlide,
@@ -142,7 +138,9 @@ export function Inspector({
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
         <div className="space-y-1.5">
-          <Label className="text-xs">Layout</Label>
+          <Label className="text-xs" htmlFor="screen-layout">
+            Layout
+          </Label>
           <Select
             value={layoutValue}
             onValueChange={(layout) => {
@@ -155,7 +153,7 @@ export function Inspector({
               });
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger id="screen-layout">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -176,9 +174,13 @@ export function Inspector({
 
         {!isStatic && (
           <div className="space-y-1.5">
-            <Label className="text-xs">Label</Label>
+            <Label className="text-xs" htmlFor="screen-label">
+              Label
+            </Label>
             <Input
+              id="screen-label"
               value={localeLabel}
+              dir="auto"
               onChange={(e) => setLocaleField("label", e.target.value)}
               placeholder={labelPlaceholder}
             />
@@ -188,11 +190,15 @@ export function Inspector({
         {!isStatic && (
           <div className="space-y-1.5">
             <div className="flex items-baseline justify-between">
-              <Label className="text-xs">Headline</Label>
+              <Label className="text-xs" htmlFor="screen-headline">
+                Headline
+              </Label>
               <span className="text-[10px] text-muted-foreground">newline = break</span>
             </div>
             <Textarea
+              id="screen-headline"
               value={localeHeadline}
+              dir="auto"
               onChange={(e) => setLocaleField("headline", e.target.value)}
               rows={3}
               placeholder={headlinePlaceholder}
@@ -234,8 +240,6 @@ export function Inspector({
           <ScreenTranslate
             slide={slide}
             locale={locale}
-            locales={locales}
-            sourceLocale={sourceLocale}
             disabled={disabled}
             onChange={onChange}
           />
@@ -244,7 +248,6 @@ export function Inspector({
         <ElementTransformControls
           slide={slide}
           device={device}
-          orientation={orientation}
           locale={locale}
           selectedElementId={selectedElementId}
           textOnly={isStatic}
@@ -262,24 +265,20 @@ export function Inspector({
 function ScreenTranslate({
   slide,
   locale,
-  sourceLocale,
   disabled,
   onChange,
 }: {
   slide: Slide;
   locale: string;
-  locales: string[];
-  sourceLocale: string;
   disabled?: boolean;
   onChange: (patch: Partial<Slide>) => void;
 }) {
   const { settings } = useAppSettings();
   const provider = activeProvider(settings);
   const source = DEFAULT_LOCALE;
-  void sourceLocale;
   const [running, setRunning] = React.useState(false);
   const [status, setStatus] = React.useState<
-    { kind: "done"; count: number } | { kind: "error"; error: string } | null
+    { kind: "done"; count: number; skipped: number } | { kind: "error"; error: string } | null
   >(null);
   const abortRef = React.useRef<AbortController | null>(null);
 
@@ -292,6 +291,10 @@ function ScreenTranslate({
 
   async function run() {
     if (running) return;
+    // Pin target locale + screen id: a locale/screen switch mid-run must not
+    // write this screen's translations into another screen or locale.
+    const targetLocale = locale;
+    const runSlideId = slide.id;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
@@ -301,10 +304,17 @@ function ScreenTranslate({
         { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: settings.model },
         [slide],
         source,
-        locale,
+        targetLocale,
         { overwrite: true, signal: controller.signal },
       );
-      const next = applyLocaleTranslations([slide], results, locale, true)[0];
+      if (slide.id !== runSlideId) {
+        setStatus({
+          kind: "error",
+          error: "Screen changed during translation — result discarded",
+        });
+        return;
+      }
+      const next = applyLocaleTranslations([slide], results, targetLocale, true)[0];
       onChange({ label: next.label, headline: next.headline, textElements: next.textElements });
       const count = Object.values(results).reduce(
         (n, r) =>
@@ -314,7 +324,7 @@ function ScreenTranslate({
           Object.keys(r.texts || {}).length,
         0,
       );
-      setStatus({ kind: "done", count });
+      setStatus({ kind: "done", count, skipped: findSourceSkips([slide], source).length });
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setStatus({
@@ -349,20 +359,26 @@ function ScreenTranslate({
           ) : (
             <Languages className="h-3 w-3" />
           )}
-          {running ? "Translating…" : "Translate Screen"}
+          {running ? "Translating…" : "Translate screen"}
         </Button>
       )}
       {status?.kind === "done" && (
         <p
+          role="status"
           className="flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400"
-          title={`${status.count} strings translated — undo with Ctrl+Z`}
+          title={`${status.count} strings translated — undo with Ctrl+Z${
+            status.skipped > 0 ? ` (${status.skipped} skipped: no en source)` : ""
+          }`}
         >
           <Check className="h-3.5 w-3.5 shrink-0" aria-label="Translated" />
           <span className="tabular-nums">{status.count}</span>
+          {status.skipped > 0 && (
+            <span className="text-muted-foreground">+{status.skipped} skipped</span>
+          )}
         </p>
       )}
       {status?.kind === "error" && (
-        <p className="flex items-center gap-1 text-[11px] text-destructive" title={status.error}>
+        <p role="status" className="flex items-center gap-1 text-[11px] text-destructive" title={status.error}>
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-label="Translation failed" />
           <span className="min-w-0 flex-1 truncate">{status.error}</span>
         </p>
@@ -374,7 +390,6 @@ function ScreenTranslate({
 function ElementTransformControls({
   slide,
   device,
-  orientation,
   locale,
   selectedElementId,
   textOnly,
@@ -383,7 +398,6 @@ function ElementTransformControls({
 }: {
   slide: Slide;
   device: Device;
-  orientation: Orientation;
   locale: string;
   selectedElementId: ElementId | null;
   // Static screens expose overlay texts only — no caption/device rows.
@@ -402,7 +416,7 @@ function ElementTransformControls({
   const activeId =
     selectedElementId && present.includes(selectedElementId) ? selectedElementId : null;
   const activeTransform = activeId
-    ? getElementTransform(slide, device, orientation, activeId)
+    ? getElementTransform(slide, device, activeId)
     : undefined;
   const activeTextElement =
     activeId && isTextElementId(activeId)
@@ -410,7 +424,7 @@ function ElementTransformControls({
       : null;
 
   function getTransform(id: ElementId) {
-    return getElementTransform(slide, device, orientation, id);
+    return getElementTransform(slide, device, id);
   }
 
   function patchElement(id: ElementId, patch: Partial<ElementTransform>) {
@@ -454,7 +468,7 @@ function ElementTransformControls({
   }
 
   function addTextElement() {
-    const { cW, cH } = getCanvas(device, orientation);
+    const { cW, cH } = getCanvas(device);
     const id = nid();
     const zIndex =
       Math.max(
@@ -523,8 +537,8 @@ function ElementTransformControls({
           <Label className="text-xs font-semibold">Elements</Label>
           <p className="text-[11px] text-muted-foreground">
             {activeId
-              ? "Fine-tune the selected element's rotation and stacking."
-              : "Click an element on the canvas to fine-tune its rotation and stacking."}
+              ? "Fine-tune the selected element's geometry, rotation, and stacking — or focus it on the canvas and use arrow keys."
+              : "Click or Tab to an element on the canvas to fine-tune its geometry, rotation, and stacking."}
           </p>
         </div>
         <Button
@@ -546,6 +560,7 @@ function ElementTransformControls({
           textElement={activeTextElement || undefined}
           locale={locale}
           onRotate={(rotation) => patchElement(activeId, { rotation })}
+          onRect={(patch) => patchElement(activeId, patch)}
           onReorder={(dir) => reorder(activeId, dir)}
           onTextChange={(value) => {
             if (activeTextElement) setTextElementValue(activeTextElement, value);
@@ -572,6 +587,7 @@ function ActiveElementPanel({
   textElement,
   locale,
   onRotate,
+  onRect,
   onReorder,
   onTextChange,
   onTextPatch,
@@ -582,6 +598,7 @@ function ActiveElementPanel({
   textElement?: TextElement;
   locale: string;
   onRotate: (rotation: number) => void;
+  onRect: (patch: Partial<ElementTransform>) => void;
   onReorder: (dir: "front" | "back" | "up" | "down") => void;
   onTextChange: (value: string) => void;
   onTextPatch: (patch: Partial<TextElement>) => void;
@@ -644,6 +661,46 @@ function ActiveElementPanel({
       </div>
 
       <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">
+          Position &amp; size <span className="opacity-70">(canvas px)</span>
+        </Label>
+        <div className="grid grid-cols-4 gap-1">
+          {(
+            [
+              ["x", "X", transform?.x],
+              ["y", "Y", transform?.y],
+              ["width", "W", transform?.width],
+              ["height", "H", transform?.height],
+            ] as const
+          ).map(([key, short, val]) => (
+            <div key={key} className="space-y-0.5">
+              <Label
+                htmlFor={`el-${activeId}-${key}`}
+                className="text-[10px] uppercase text-muted-foreground"
+              >
+                {short}
+              </Label>
+              <Input
+                id={`el-${activeId}-${key}`}
+                type="number"
+                className="h-7 px-1.5 text-xs tabular-nums"
+                value={val === undefined ? "" : Math.round(val)}
+                min={key === "width" || key === "height" ? 1 : undefined}
+                step={key === "width" || key === "height" ? 10 : 8}
+                disabled={!engaged}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (!Number.isFinite(n)) return;
+                  onRect({ [key]: key === "width" || key === "height" ? Math.max(1, n) : n });
+                }}
+                aria-label={`${label} ${key}`}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1">
         <Label className="text-[11px] text-muted-foreground">Layer</Label>
         <div className="grid grid-cols-4 gap-1">
           <LayerButton disabled={!engaged} onClick={() => onReorder("back")} label="Send to back">
@@ -683,6 +740,7 @@ function TextElementPanel({
         <Textarea
           value={text}
           rows={2}
+          dir="auto"
           onChange={(event) => onTextChange(event.target.value)}
           placeholder="Overlay text"
         />

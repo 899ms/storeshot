@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LAYOUT_LABEL } from "@/lib/constants";
 import { pickText } from "@/lib/locale";
-import type { Device, Orientation, ScreenBackground, Slide, Theme } from "@/lib/types";
+import type { Device, ScreenBackground, Slide, Theme } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DeckCanvas, SlideCanvas, getCanvas } from "./slide-canvas";
 
@@ -17,11 +17,8 @@ type Props = {
   index: number;
   active: boolean;
   device: Device;
-  orientation: Orientation;
   theme: Theme;
   locale: string;
-  appName?: string;
-  appIcon?: string;
   connectedCanvas: boolean;
   headlineFont?: string;
   labelFont?: string;
@@ -34,17 +31,14 @@ type Props = {
 // Thumb tile target width (pixels). Height is derived from device aspect.
 const THUMB_W = 60;
 
-export function SlideThumb({
+function SlideThumbInner({
   slide,
   slides,
   index,
   active,
   device,
-  orientation,
   theme,
   locale,
-  appName,
-  appIcon,
   connectedCanvas,
   headlineFont,
   labelFont,
@@ -59,7 +53,7 @@ export function SlideThumb({
     id: slide.id,
   });
 
-  const { cW, cH } = getCanvas(device, orientation);
+  const { cW, cH } = getCanvas(device);
   const aspect = cW / cH;
   const tileH = Math.max(34, Math.min(120, Math.round(THUMB_W / aspect)));
   const scale = THUMB_W / cW;
@@ -121,11 +115,8 @@ export function SlideThumb({
               <DeckCanvas
                 slides={visibleSlides}
                 device={device}
-                orientation={orientation}
                 theme={theme}
                 locale={locale}
-                appName={appName}
-                appIcon={appIcon}
                 connectedCanvas
                 editable={false}
                 headlineFont={headlineFont}
@@ -136,11 +127,8 @@ export function SlideThumb({
               <SlideCanvas
                 slide={slide}
                 device={device}
-                orientation={orientation}
                 theme={theme}
                 locale={locale}
-                appName={appName}
-                appIcon={appIcon}
                 editable={false}
                 headlineFont={headlineFont}
                 labelFont={labelFont}
@@ -194,3 +182,31 @@ export function SlideThumb({
     </Card>
   );
 }
+
+// Callback props are stable editor-level callbacks by construction, so they
+// are intentionally excluded: a thumb re-renders only when its own slide,
+// its visible neighbors, or its display props change — never on unrelated
+// keystrokes elsewhere in the deck.
+function sameSlides(a: Slide[], b: Slide[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+export const SlideThumb = React.memo(SlideThumbInner, (prev, next) => {
+  if (prev.index !== next.index) return false;
+  if (!sameSlides(prev.slides, next.slides)) return false;
+  return (
+    prev.slide === next.slide &&
+    prev.active === next.active &&
+    prev.device === next.device &&
+    prev.theme === next.theme &&
+    prev.locale === next.locale &&
+    prev.connectedCanvas === next.connectedCanvas &&
+    prev.headlineFont === next.headlineFont &&
+    prev.labelFont === next.labelFont &&
+    prev.background === next.background
+  );
+});

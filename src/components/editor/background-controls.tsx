@@ -4,6 +4,7 @@ import { Image as ImageIcon, Layers, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Slider } from "@/components/ui/slider";
 import type { BackgroundStyle, ScreenBackground } from "@/lib/types";
 import { MESH_PRESETS, type MeshPresetTone } from "@/lib/mesh-presets";
@@ -68,44 +69,26 @@ export function BackgroundEditor({
     }
   }
 
-  const modes: { id: Mode; label: string; icon: typeof Layers }[] = [
-    ...(showDefault ? [{ id: "default" as const, label: "Default", icon: RotateCcw }] : []),
-    { id: "mesh" as const, label: "Mesh", icon: Layers },
-    { id: "image" as const, label: "Image", icon: ImageIcon },
+  const modes = [
+    ...(showDefault
+      ? [{ value: "default" as const, label: "Default", icon: RotateCcw }]
+      : []),
+    { value: "mesh" as const, label: "Mesh", icon: Layers },
+    { value: "image" as const, label: "Image", icon: ImageIcon },
   ];
 
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <Label className="text-xs">Background</Label>
-        <div
-          role="radiogroup"
-          aria-label="Background type"
-          className="grid gap-1"
-          style={{ gridTemplateColumns: `repeat(${modes.length}, minmax(0, 1fr))` }}
-        >
-          {modes.map((m) => {
-            const selected = mode === m.id;
-            const Icon = m.icon;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => setMode(m.id)}
-                className={
-                  selected
-                    ? "flex flex-col items-center gap-0.5 rounded-md border border-primary bg-primary/10 px-1 py-1.5 text-foreground ring-1 ring-primary/40"
-                    : "flex flex-col items-center gap-0.5 rounded-md border border-border/70 px-1 py-1.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                }
-              >
-                <Icon className="h-4 w-4" />
-                <span className="text-[10px] font-medium leading-none">{m.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        <Label className="text-xs" id="background-type-label">
+          Background
+        </Label>
+        <SegmentedControl
+          label="Background type"
+          value={mode}
+          options={modes}
+          onChange={(v) => setMode(v)}
+        />
       </div>
 
       {value?.kind === "mesh" && (

@@ -9,7 +9,7 @@ import {
   FolderTree,
   Globe,
   Layers,
-  Package,
+  Play,
   Smartphone,
   Sparkles,
   Tablet,
@@ -29,10 +29,10 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   EXPORT_TARGETS,
   ExportConfig,
-  ExportTarget,
   FolderPreset,
 } from "@/lib/export-options";
 import type { StoreKind } from "@/lib/locale";
@@ -44,7 +44,6 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   slides: Slide[];
-  activeSlideId: string | null;
   locales: string[];
   currentLocale: string;
   onStartExport: (config: ExportConfig) => void;
@@ -55,7 +54,6 @@ export function ExportDialog({
   open,
   onOpenChange,
   slides,
-  activeSlideId,
   locales,
   currentLocale,
   onStartExport,
@@ -66,8 +64,8 @@ export function ExportDialog({
     EXPORT_TARGETS.filter((t) => t.defaultSelected).map((t) => t.id),
   );
 
-  // Only App Store locales are exported: the "en" source language is never
-  // emitted, and folders follow App Store Connect codes (e.g. sl-SI).
+  // Only store locales are exported: the "en"/"es" source languages are
+  // never emitted, and folders follow the selected store's codes.
   const exportableLocales = React.useMemo(
     () => locales.filter((l) => exportFolderForLocale(l) !== null),
     [locales],
@@ -90,17 +88,26 @@ export function ExportDialog({
   // Google Play codes (they differ, e.g. sl-SI vs sl).
   const [store, setStore] = React.useState<StoreKind>("apple");
 
-  // Keep state synced when props change
+  // Keep state synced when props change. Reopening reconciles with the
+  // live deck: deleted slides/locales drop out, newly added ones join, so
+  // header counts always match what the bundle will contain.
   React.useEffect(() => {
-    if (open) {
-      setSelectedLocales((prev) =>
-        prev.length === 0
-          ? locales.filter((l) => exportFolderForLocale(l) !== null)
-          : prev.filter((l) => exportFolderForLocale(l) !== null),
-      );
-      setSelectedSlideIds((prev) => (prev.length === 0 ? slides.map((s) => s.id) : prev));
-    }
-  }, [open, locales, slides]);
+    if (!open) return;
+    const allSlideIds = slides.map((s) => s.id);
+    const slideSet = new Set(allSlideIds);
+    setSelectedSlideIds((prev) => {
+      const kept = prev.filter((id) => slideSet.has(id));
+      const fresh = allSlideIds.filter((id) => !prev.includes(id));
+      const next = [...kept, ...fresh];
+      return next.length > 0 ? next : allSlideIds;
+    });
+    setSelectedLocales((prev) => {
+      const kept = prev.filter((l) => exportableLocales.includes(l));
+      const fresh = exportableLocales.filter((l) => !prev.includes(l));
+      const next = [...kept, ...fresh];
+      return next.length > 0 ? next : [...exportableLocales];
+    });
+  }, [open, locales, slides, exportableLocales]);
 
   // Target toggle handlers
   const toggleTarget = (id: string) => {
@@ -158,6 +165,9 @@ export function ExportDialog({
   const selectedTargets = EXPORT_TARGETS.filter((t) => selectedTargetIds.includes(t.id));
   const totalScreenshots =
     selectedTargets.length * selectedLocales.length * selectedSlideIds.length;
+  // Example upload folder for the selected store (labels differ per store).
+  const exampleFolder = exportFolderForLocale("sl", store) ?? "sl";
+  const storeName = store === "apple" ? "App Store" : "Google Play";
 
   const isExportDisabled =
     selectedTargetIds.length === 0 ||
@@ -184,20 +194,24 @@ export function ExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col max-h-[60vh] h-[60vh] max-w-3xl overflow-hidden p-0 gap-0 sm:max-w-3xl">
+      <DialogContent className="flex flex-col max-h-[60vh] h-[60vh] max-w-[calc(100vw-2rem)] overflow-hidden p-0 gap-0 sm:max-w-3xl">
         {/* Header with Top CTA */}
         <DialogHeader className="shrink-0 border-b px-6 py-3.5 bg-card/80">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pr-8">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
-                <Apple className="h-5 w-5" />
+                {store === "apple" ? (
+                  <Apple className="h-5 w-5" />
+                ) : (
+                  <Play className="h-5 w-5" />
+                )}
               </div>
               <div className="min-w-0">
                 <DialogTitle className="text-base font-bold tracking-tight">
-                  Export App Store Screenshots
+                  Export {storeName} Screenshots
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground line-clamp-1">
-                  Choose devices, screens, and packaging format for your App Store bundle.
+                  Choose devices, screens, and packaging format for your {storeName} bundle.
                 </DialogDescription>
               </div>
             </div>
@@ -227,7 +241,7 @@ export function ExportDialog({
                 className="h-6 px-2 text-[11px] text-primary hover:text-primary font-medium"
                 onClick={selectRecommendedTargets}
               >
-                Recommended
+                Recommended devices
               </Button>
               <span className="text-[11px] text-muted-foreground">•</span>
               <Button
@@ -270,19 +284,27 @@ export function ExportDialog({
                 return (
                   <Card
                     key={target.id}
+                    role="checkbox"
+                    tabIndex={0}
+                    aria-checked={isChecked}
+                    aria-label={target.name}
                     onClick={() => toggleTarget(target.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleTarget(target.id);
+                      }
+                    }}
                     className={cn(
-                      "flex cursor-pointer items-start gap-3 p-3 shadow-none transition-all",
+                      "flex cursor-pointer items-start gap-3 p-3 shadow-none transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isChecked
                         ? "border-primary bg-primary/5 ring-1 ring-primary/30"
                         : "border-border/80 hover:bg-muted/40",
                     )}
                   >
-                    <Checkbox
-                      checked={isChecked}
-                      onCheckedChange={() => toggleTarget(target.id)}
-                      className="mt-0.5"
-                    />
+                    <span className="pointer-events-none mt-0.5" aria-hidden>
+                      <Checkbox checked={isChecked} tabIndex={-1} />
+                    </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1.5">
                         <div className="flex items-center gap-1.5 min-w-0">
@@ -448,8 +470,8 @@ export function ExportDialog({
               </div>
               {exportableLocales.length < locales.length && (
                 <p className="text-[10px] text-muted-foreground">
-                  The en source language is never exported — the store accepts en-US,
-                  en-GB, en-AU and en-CA.
+                  Source languages (en, es) are never exported — use regional
+                  variants such as en-US or es-ES instead.
                 </p>
               )}
             </Card>
@@ -461,26 +483,17 @@ export function ExportDialog({
                   <FolderTree className="h-4 w-4 text-muted-foreground" />
                   <span>4. Folder Packaging Preset</span>
                 </div>
-                <div
-                  role="radiogroup"
-                  aria-label="Target store"
-                  className="flex items-center gap-1"
-                  title="Locale folder names follow the selected store's codes"
-                >
-                  {(["apple", "google"] as const).map((s) => (
-                    <Button
-                      key={s}
-                      type="button"
-                      variant={store === s ? "default" : "ghost"}
-                      size="sm"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setStore(s)}
-                      aria-checked={store === s}
-                      role="radio"
-                    >
-                      {s === "apple" ? "App Store" : "Google Play"}
-                    </Button>
-                  ))}
+                <div title="Locale folder names follow the selected store's codes">
+                  <SegmentedControl
+                    label="Target store"
+                    layout="inline"
+                    value={store}
+                    onChange={(v) => setStore(v)}
+                    options={[
+                      { value: "apple", label: "App Store" },
+                      { value: "google", label: "Google Play" },
+                    ]}
+                  />
                 </div>
               </div>
               <RadioGroup
@@ -488,8 +501,8 @@ export function ExportDialog({
                 onValueChange={(v) => setFolderPreset(v as FolderPreset)}
                 className="gap-2 pt-1"
               >
-                <div
-                  onClick={() => setFolderPreset("standard")}
+                <label
+                  htmlFor="preset-standard"
                   className={cn(
                     "flex cursor-pointer items-start gap-2.5 rounded-md border p-2 text-xs transition-colors",
                     folderPreset === "standard"
@@ -499,17 +512,17 @@ export function ExportDialog({
                 >
                   <RadioGroupItem value="standard" id="preset-standard" className="mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <Label htmlFor="preset-standard" className="cursor-pointer font-semibold text-xs leading-none">
+                    <span className="font-semibold text-xs leading-none">
                       Standard Store Layout
-                    </Label>
+                    </span>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      Organized as <code>apple/iphone-6.9/en/01.png</code>
+                      Organized as <code>apple/iphone-6.9/{exampleFolder}/01.png</code>
                     </p>
                   </div>
-                </div>
+                </label>
 
-                <div
-                  onClick={() => setFolderPreset("fastlane")}
+                <label
+                  htmlFor="preset-fastlane"
                   className={cn(
                     "flex cursor-pointer items-start gap-2.5 rounded-md border p-2 text-xs transition-colors",
                     folderPreset === "fastlane"
@@ -519,17 +532,17 @@ export function ExportDialog({
                 >
                   <RadioGroupItem value="fastlane" id="preset-fastlane" className="mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <Label htmlFor="preset-fastlane" className="cursor-pointer font-semibold text-xs leading-none">
+                    <span className="font-semibold text-xs leading-none">
                       Fastlane Deliver Preset
-                    </Label>
+                    </span>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      Ready for automated CI/CD: <code>fastlane/screenshots/en/...</code>
+                      Ready for automated CI/CD: <code>fastlane/screenshots/{exampleFolder}/...</code>
                     </p>
                   </div>
-                </div>
+                </label>
 
-                <div
-                  onClick={() => setFolderPreset("flat")}
+                <label
+                  htmlFor="preset-flat"
                   className={cn(
                     "flex cursor-pointer items-start gap-2.5 rounded-md border p-2 text-xs transition-colors",
                     folderPreset === "flat"
@@ -539,14 +552,14 @@ export function ExportDialog({
                 >
                   <RadioGroupItem value="flat" id="preset-flat" className="mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <Label htmlFor="preset-flat" className="cursor-pointer font-semibold text-xs leading-none">
+                    <span className="font-semibold text-xs leading-none">
                       Flat ZIP Archive
-                    </Label>
+                    </span>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       All PNGs in a single root folder with prefixed filenames
                     </p>
                   </div>
-                </div>
+                </label>
               </RadioGroup>
             </Card>
           </div>

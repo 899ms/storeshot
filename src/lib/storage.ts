@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PROJECT_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
 import { DEFAULT_PROJECT, makeEmptyProject } from "./defaults";
 import { coerceLocalized } from "./locale";
+import { clearImageCache } from "./image-cache";
 import type { BackgroundStyle, Device, ElementTransform, ProjectState, ScreenBackground, Slide, TextElement } from "./types";
 
 const HISTORY_LIMIT = 50;
@@ -144,12 +145,15 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
     connectedCanvas,
     background: cleanBackground(parsed.background) ?? { ...DEFAULT_PROJECT.background },
     device: parsed.device === "ipad" || parsed.device === "iphone" ? parsed.device : "iphone",
-    orientation: "portrait",
     slidesByDevice: {
       ...DEFAULT_PROJECT.slidesByDevice,
       ...slidesByDevice,
     } as ProjectState["slidesByDevice"],
   };
+  // Drop legacy keys that no longer exist on ProjectState (retired device
+  // decks, single-value orientation) so stale data can't re-enter via file
+  // cache or be rewritten on save.
+  delete (merged as unknown as Record<string, unknown>).orientation;
   // Drop legacy per-device extras (e.g. crossScreenMockupsByDevice for
   // retired devices) so stale data can't re-enter via file cache.
   const extra = merged as unknown as Record<string, unknown>;
@@ -228,12 +232,44 @@ function saveToLocalStorage(
 ): { ok: true } | { ok: false; error: string } {
   if (typeof window === "undefined") return { ok: true };
   try {
-    window.localStorage.setItem(cacheKey(workspace), JSON.stringify(state));
+    // Inline data: URIs (failed-upload fallback, hand-edited files) would
+    // blow the ~5MB quota and break every save. The cache is only an
+    // instant-paint layer — the file holds the truth — so strip them here.
+    window.localStorage.setItem(cacheKey(workspace), JSON.stringify(stripInlineImages(state)));
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: msg };
   }
+}
+
+// Copy of state with inline data: image URIs blanked (cache payload only).
+function stripInlineImages(state: ProjectState): ProjectState {
+  const isInline = (v: string | undefined) => typeof v === "string" && v.startsWith("data:");
+  return {
+    ...state,
+    appIcon: isInline(state.appIcon) ? undefined : state.appIcon,
+    background:
+      state.background?.kind === "image" && isInline(state.background.src)
+        ? { kind: "theme" }
+        : state.background,
+    slidesByDevice: Object.fromEntries(
+      Object.entries(state.slidesByDevice).map(([dev, slides]) => [
+        dev,
+        slides.map((s) => ({
+          ...s,
+          screenshot: isInline(s.screenshot) ? "" : s.screenshot,
+          screenshotSecondary: isInline(s.screenshotSecondary)
+            ? undefined
+            : s.screenshotSecondary,
+          background:
+            s.background?.kind === "image" && isInline(s.background.src)
+              ? undefined
+              : s.background,
+        })),
+      ]),
+    ) as ProjectState["slidesByDevice"],
+  };
 }
 
 async function saveToFile(
@@ -277,6 +313,12 @@ export function useProject(workspace: string | null) {
   useEffect(() => {
     stateRef.current = state;
   });
+  // Whether the file endpoint is usable for the current workspace. Mirrored
+  // in a ref so unmount/switch cleanups can flush safely.
+  const fileReadyRef = useRef(false);
+  useEffect(() => {
+    fileReadyRef.current = fileReady;
+  }, [fileReady]);
 
   // History stacks live in refs — they don't drive any rendered UI, so
   // mutating them never needs to re-render.
@@ -290,6 +332,9 @@ export function useProject(workspace: string | null) {
   // With no workspace selected the hook stays inert: blank state, never saved.
   useEffect(() => {
     let cancelled = false;
+    // Image cache entries are workspace-scoped — drop the old workspace's
+    // base64 payloads instead of accumulating them forever.
+    clearImageCache();
     setHydrated(false);
     setFileReady(false);
     setSaveError(null);
@@ -329,6 +374,17 @@ export function useProject(workspace: string | null) {
 
     return () => {
       cancelled = true;
+      // Flush any pending debounced save for the workspace we're leaving:
+      // otherwise edits younger than SAVE_DEBOUNCE_MS are silently dropped.
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+      if (workspace && fileReadyRef.current) {
+        const snap = stateRef.current;
+        saveToLocalStorage(workspace, snap);
+        void saveToFile(workspace, snap).catch(() => {});
+      }
     };
   }, [workspace]);
 

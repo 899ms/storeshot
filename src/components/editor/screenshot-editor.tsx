@@ -1,13 +1,11 @@
 "use client";
 import * as React from "react";
-import JSZip from "jszip";
-import { toPng } from "html-to-image";
+import dynamic from "next/dynamic";
 import { Toaster, toast } from "sonner";
 import {
   DEVICE_LABEL,
   getExportSizes,
   hasTheme,
-  supportsLandscape,
   themeById,
 } from "@/lib/constants";
 import { detectPlatform, newSlide, nid } from "@/lib/defaults";
@@ -15,12 +13,13 @@ import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/eleme
 import { preloadImages } from "@/lib/image-cache";
 import { exportFolderForLocale, resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
 import { reportError, useErrorLog } from "@/lib/error-log";
-import { ensureFontsLoaded } from "@/lib/fonts";
+import { ensureFontsLoaded, fontsReadyWithTimeout } from "@/lib/fonts";
 import { useProject } from "@/lib/storage";
 import { activeProvider, useAppSettings } from "@/lib/app-settings";
 import {
   applyLocaleTranslations,
   translateSlidesForLocale,
+  findSourceSkips,
   TranslateError,
 } from "@/lib/translate";
 import { useActiveWorkspace } from "@/lib/workspaces";
@@ -36,16 +35,25 @@ import type {
 import { ExportProgressIndicator } from "./export-progress";
 import { Button } from "@/components/ui/button";
 import { Inspector } from "./inspector";
-import { SettingsDialog } from "./settings-dialog";
-import { TranslateDialog } from "./translate-dialog";
-import { ErrorLogDialog } from "./error-log-dialog";
 import { PreviewStage } from "./preview-stage";
 import { Sidebar } from "./sidebar";
 import { DeckCanvas, getCanvas } from "./slide-canvas";
 import { Toolbar } from "./toolbar";
-import { ExportDialog } from "./export-dialog";
+// Heavy, rarely-on-first-paint surfaces load on demand: dialogs mount only
+// when opened, and zip/snapshot libraries import inside export functions.
+const SettingsDialog = dynamic(() =>
+  import("./settings-dialog").then((m) => m.SettingsDialog),
+);
+const TranslateDialog = dynamic(() =>
+  import("./translate-dialog").then((m) => m.TranslateDialog),
+);
+const ErrorLogDialog = dynamic(() =>
+  import("./error-log-dialog").then((m) => m.ErrorLogDialog),
+);
+const ExportDialog = dynamic(() =>
+  import("./export-dialog").then((m) => m.ExportDialog),
+);
 import {
-  EXPORT_TARGETS,
   type ExportConfig,
   type ExportTarget,
   buildExportZipPath,
@@ -76,7 +84,10 @@ export function ScreenshotEditor() {
   const exportRef = React.useRef<HTMLDivElement | null>(null);
   const stopExportRef = React.useRef<boolean>(false);
 
-  const currentSlides = state.slidesByDevice[state.device] || [];
+  const currentSlides = React.useMemo(
+    () => state.slidesByDevice[state.device] || [],
+    [state.slidesByDevice, state.device],
+  );
   // Translation source is always the default locale ("en"). All AI
   // translation reads English copy and writes to the target locale.
   const translationSourceLocale = DEFAULT_LOCALE;
@@ -85,6 +96,12 @@ export function ScreenshotEditor() {
   const translatableCount = currentSlides.filter(
     (s) => s.layout !== "static" || (s.textElements || []).length > 0,
   ).length;
+  // Live mirror of decks so translation results can be pruned to still-present
+  // ids outside of state updaters.
+  const decksRef = React.useRef(state.slidesByDevice);
+  React.useEffect(() => {
+    decksRef.current = state.slidesByDevice;
+  });
 
   // Translate every screen of the current device deck into the currently
   // selected locale. Single setState so the run is one undo step.
@@ -130,7 +147,14 @@ export function ScreenshotEditor() {
           ),
         },
       }));
-      toast.success(`Translated ${count} strings to ${target}`);
+      toast.success(`Translated ${count} strings to ${target}`, {
+        description: (() => {
+          const skipped = findSourceSkips(currentSlides, DEFAULT_LOCALE).length;
+          return skipped > 0
+            ? `${skipped} field${skipped === 1 ? "" : "s"} skipped (no ${DEFAULT_LOCALE} source text)`
+            : undefined;
+        })(),
+      });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       const message = e instanceof TranslateError ? e.message : String(e);
@@ -172,12 +196,6 @@ export function ScreenshotEditor() {
   }, [hydrated, currentSlides, activeSlide]);
 
   React.useEffect(() => {
-    if (!supportsLandscape(state.device) && state.orientation !== "portrait") {
-      setState((p) => ({ ...p, orientation: "portrait" }));
-    }
-  }, [state.device, state.orientation, setState]);
-
-  React.useEffect(() => {
     if (hydrated && state.themeId && !hasTheme(state.themeId)) {
       toast.warning("Using fallback theme", {
         description: `Theme "${state.themeId}" is not defined in src/lib/constants.ts.`,
@@ -188,7 +206,13 @@ export function ScreenshotEditor() {
 
   const assetPaths = React.useMemo(() => {
     const paths = new Set<string>();
-    if (state.appIcon) paths.add(state.appIcon);
+    if (state.appIcon) {
+      paths.add(
+        state.appIcon.includes("{locale}")
+          ? resolveScreenshot(state.appIcon, state.locale)
+          : state.appIcon,
+      );
+    }
     for (const bg of backgroundImagePaths(state.background)) paths.add(bg);
     // Preload locale variants for the current device only. Preloading every
     // device's slides fetched URLs that may not exist (e.g. empty iPad asset
@@ -207,7 +231,7 @@ export function ScreenshotEditor() {
       for (const bg of backgroundImagePaths(s.background)) paths.add(bg);
     }
     return Array.from(paths).sort();
-  }, [state.slidesByDevice, state.appIcon, state.background, state.locales, state.device]);
+  }, [state.slidesByDevice, state.appIcon, state.background, state.locales, state.device, state.locale]);
   const assetSig = assetPaths.join("|");
 
   React.useEffect(() => {
@@ -327,6 +351,10 @@ export function ScreenshotEditor() {
       if (idx === -1) return;
       const snap = slides[idx];
       const fallback = slides[idx + 1] || slides[idx - 1] || null;
+      // Anchor for restore: the id of the slide that followed the deleted
+      // one. Resolved at click time so device switches and later edits can't
+      // misplace the restore (stale index bug).
+      const anchorId = slides[idx + 1]?.id ?? null;
 
       setState((prev) => {
         const cur = prev.slidesByDevice[dev] || [];
@@ -344,9 +372,12 @@ export function ScreenshotEditor() {
             setState((prev) => {
               const cur = prev.slidesByDevice[dev] || [];
               if (cur.some((s) => s.id === snap.id)) return prev;
-              const restored = [...cur.slice(0, idx), snap, ...cur.slice(idx)];
+              const anchorIdx = anchorId ? cur.findIndex((s) => s.id === anchorId) : -1;
+              const at = anchorIdx === -1 ? cur.length : anchorIdx;
+              const restored = [...cur.slice(0, at), snap, ...cur.slice(at)];
               return {
                 ...prev,
+                device: dev,
                 slidesByDevice: { ...prev.slidesByDevice, [dev]: restored },
               };
             });
@@ -380,6 +411,17 @@ export function ScreenshotEditor() {
       } as Partial<Slide>);
     },
     [patchSlide, state.locale],
+  );
+
+  // Stable wrappers for the preview stage so its memoized edit-handler
+  // object (and the whole DeckCanvas subtree) survives unrelated renders.
+  const handlePreviewLabel = React.useCallback(
+    (slide: Slide, v: string) => patchLocalized(slide, "label", v),
+    [patchLocalized],
+  );
+  const handlePreviewHeadline = React.useCallback(
+    (slide: Slide, v: string) => patchLocalized(slide, "headline", v),
+    [patchLocalized],
   );
 
   const patchElementTransform = React.useCallback(
@@ -600,7 +642,13 @@ export function ScreenshotEditor() {
     // Preload only the selected slides × selected locales so unselected
     // assets (e.g. missing iPad files) are never fetched during export.
     const exportPaths: string[] = [];
-    if (state.appIcon) exportPaths.push(state.appIcon);
+    if (state.appIcon) {
+      exportPaths.push(
+        state.appIcon.includes("{locale}")
+          ? resolveScreenshot(state.appIcon, state.locale)
+          : state.appIcon,
+      );
+    }
     exportPaths.push(...backgroundImagePaths(state.background));
     for (const s of selectedSlides) {
       for (const raw of [s.screenshot, s.screenshotSecondary]) {
@@ -626,23 +674,21 @@ export function ScreenshotEditor() {
     }
 
     // Make sure custom fonts are loaded before snapshot so typography in PNG
-    // matches what's on screen.
+    // matches what's on screen. Bounded so offline exports can't hang.
     await ensureFontsLoaded([state.headlineFont, state.labelFont]);
-    if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
-      try {
-        await document.fonts.ready;
-      } catch {
-        /* ignore */
-      }
-    }
+    await fontsReadyWithTimeout();
 
-    const { cW, cH } = getCanvas(state.device, state.orientation);
+    const { cW, cH } = getCanvas(state.device);
+    const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
     // Every (locale × target × screen) combination must end up in the zip.
     // Units are tracked by zip path so a final verification can prove
     // completeness instead of trusting the happy path.
     type Unit = { locale: string; target: ExportTarget; slideIdx: number; zipPath: string };
     const units: Unit[] = [];
+    // Number by position within the selection so deselected screens leave no
+    // gaps (selecting deck screens 3+5 yields 01, 02 — not 03, 05).
+    const posOf = new Map(targetSlideIndices.map((idx, pos) => [idx, pos + 1]));
     for (const locale of locales) {
       for (const target of targets) {
         for (const slideIdx of targetSlideIndices) {
@@ -660,6 +706,7 @@ export function ScreenshotEditor() {
               slideIdx,
               slide.layout,
               config.folderPreset,
+              posOf.get(slideIdx) ?? slideIdx + 1,
             ),
           });
         }
@@ -820,7 +867,7 @@ export function ScreenshotEditor() {
       return;
     }
 
-    const sizes = getExportSizes(state.device, state.orientation);
+    const sizes = getExportSizes(state.device);
     if (!sizes.length) {
       toast.error("Nothing to export");
       return;
@@ -832,7 +879,14 @@ export function ScreenshotEditor() {
     setExportLocaleOverride(state.locale);
 
     const singlePaths: string[] = [];
-    if (state.appIcon) singlePaths.push(state.appIcon);
+    if (state.appIcon) {
+      singlePaths.push(
+        state.appIcon.includes("{locale}")
+          ? resolveScreenshot(state.appIcon, state.locale)
+          : state.appIcon,
+      );
+    }
+    singlePaths.push(...backgroundImagePaths(activeSlide.background ?? state.background));
     for (const raw of [activeSlide.screenshot, activeSlide.screenshotSecondary]) {
       if (!raw || raw.startsWith("data:")) continue;
       singlePaths.push(
@@ -843,15 +897,9 @@ export function ScreenshotEditor() {
     await waitForPaint();
 
     await ensureFontsLoaded([state.headlineFont, state.labelFont]);
-    if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
-      try {
-        await document.fonts.ready;
-      } catch {
-        /* ignore */
-      }
-    }
+    await fontsReadyWithTimeout();
 
-    const { cW, cH } = getCanvas(state.device, state.orientation);
+    const { cW, cH } = getCanvas(state.device);
     const platform = detectPlatform(state.device);
     const el = exportRef.current;
     if (!el) {
@@ -872,6 +920,7 @@ export function ScreenshotEditor() {
         a.click();
         toast.success(`Exported screen ${idx + 1} (${size.w}×${size.h})`);
       } else {
+        const { default: JSZip } = await import("jszip");
         const zip = new JSZip();
         for (const size of sizes) {
           const dataUrl = await captureWithSingleRetry(el, cW, cH, size.w, size.h);
@@ -943,6 +992,8 @@ export function ScreenshotEditor() {
     el.style.transformOrigin = "top left";
     el.style.zIndex = "-1";
     try {
+      // Imported lazily so first paint never pays for the snapshot library.
+      const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(el, {
         width: sourceW,
         height: sourceH,
@@ -952,6 +1003,9 @@ export function ScreenshotEditor() {
         cacheBust: false,
         backgroundColor: "#ffffff",
       });
+      if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) {
+        throw new Error("snapshot produced no image output");
+      }
       return dataUrl;
     } finally {
       el.style.left = prev.left || "-99999px";
@@ -976,7 +1030,7 @@ export function ScreenshotEditor() {
     );
   }
 
-  const { cW, cH } = getCanvas(state.device, state.orientation);
+  const { cW, cH } = getCanvas(state.device);
   const busy = !!exporting;
 
   return (
@@ -992,8 +1046,6 @@ export function ScreenshotEditor() {
         locales={state.locales}
         device={state.device}
         setDevice={(v) => setState((p) => ({ ...p, device: v }))}
-        orientation={state.orientation}
-        setOrientation={(v) => setState((p) => ({ ...p, orientation: v }))}
         onExport={() => setExportDialogOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenTranslate={() => setTranslateOpen(true)}
@@ -1059,29 +1111,41 @@ export function ScreenshotEditor() {
         onOpenChange={setTranslateOpen}
         locales={state.locales}
         slides={currentSlides}
+        device={state.device}
         sourceLocale={translationSourceLocale}
         disabled={busy}
-        onApplyTranslations={(targetLocale, results, overwrite) =>
+        onApplyTranslations={(targetLocale, results, overwrite, originDevice) => {
+          // Prune to ids still present in the origin deck (screens deleted
+          // mid-run are reported, never misapplied to another deck).
+          const liveIds = new Set((decksRef.current[originDevice] || []).map((s) => s.id));
+          const pruned = Object.fromEntries(
+            Object.entries(results).filter(([id]) => liveIds.has(id)),
+          );
+          const dropped = Object.keys(results).length - Object.keys(pruned).length;
           setState((prev) => ({
             ...prev,
             slidesByDevice: {
               ...prev.slidesByDevice,
-              [prev.device]: applyLocaleTranslations(
-                prev.slidesByDevice[prev.device] || [],
-                results,
+              [originDevice]: applyLocaleTranslations(
+                prev.slidesByDevice[originDevice] || [],
+                pruned,
                 targetLocale,
                 overwrite,
               ),
             },
-          }))
-        }
+          }));
+          if (dropped > 0) {
+            toast.warning(
+              `${dropped} screen${dropped === 1 ? "" : "s"} changed during translation — skipped`,
+            );
+          }
+        }}
       />
 
       <ExportDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
         slides={currentSlides}
-        activeSlideId={activeSlide?.id || null}
         locales={state.locales}
         currentLocale={state.locale}
         onStartExport={exportWithConfig}
@@ -1112,11 +1176,8 @@ export function ScreenshotEditor() {
             slides={currentSlides}
             activeId={activeSlide?.id || null}
             device={state.device}
-            orientation={state.orientation}
             theme={theme}
             locale={state.locale}
-            appName={state.appName}
-            appIcon={state.appIcon}
             connectedCanvas={state.connectedCanvas}
             headlineFont={state.headlineFont}
             labelFont={state.labelFont}
@@ -1130,25 +1191,22 @@ export function ScreenshotEditor() {
           />
         </aside>
 
-        <main className="flex flex-1 items-stretch overflow-hidden min-h-0">
+        <main className="flex min-h-[280px] flex-1 items-stretch overflow-hidden md:min-h-0">
           {activeSlide && currentSlides.length > 0 ? (
             <PreviewStage
               slides={currentSlides}
               activeSlideId={activeSlide.id}
               device={state.device}
-              orientation={state.orientation}
-              theme={theme}
+                theme={theme}
               locale={state.locale}
-              appName={state.appName}
-              appIcon={state.appIcon}
               connectedCanvas={state.connectedCanvas}
               selectedElement={selectedElement}
               headlineFont={state.headlineFont}
               labelFont={state.labelFont}
               background={state.background}
               onActiveSlideChange={setActiveSlideId}
-              onLabelChange={(slide, v) => patchLocalized(slide, "label", v)}
-              onHeadlineChange={(slide, v) => patchLocalized(slide, "headline", v)}
+              onLabelChange={handlePreviewLabel}
+              onHeadlineChange={handlePreviewHeadline}
               onTextElementTextChange={patchTextElementText}
               onElementChange={patchElementTransform}
               onSelectElement={setSelectedElement}
@@ -1180,10 +1238,8 @@ export function ScreenshotEditor() {
             <Inspector
               slide={activeSlide}
               device={state.device}
-              orientation={state.orientation}
-              locale={state.locale}
+                locale={state.locale}
               locales={state.locales}
-              sourceLocale={translationSourceLocale}
               selectedElementId={
                 selectedElement?.slideId === activeSlide.id ? selectedElement.elementId : null
               }
@@ -1241,11 +1297,8 @@ export function ScreenshotEditor() {
               <DeckCanvas
                 slides={currentSlides}
                 device={state.device}
-                orientation={state.orientation}
-                theme={theme}
+                    theme={theme}
                 locale={exportLocaleOverride ?? state.locale}
-                appName={state.appName}
-                appIcon={state.appIcon}
                 connectedCanvas={state.connectedCanvas}
                 headlineFont={state.headlineFont}
                 labelFont={state.labelFont}

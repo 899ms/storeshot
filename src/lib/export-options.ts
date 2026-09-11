@@ -1,10 +1,8 @@
 import type { StoreKind } from "./locale";
 
-export type TargetPlatform = "ios";
-
 export type ExportTarget = {
   id: string;
-  platform: TargetPlatform;
+  platform: "ios";
   platformName: string;
   name: string;
   description: string;
@@ -59,7 +57,6 @@ export type ExportConfig = {
   selectedSlideIds: string[];
   folderPreset: FolderPreset;
   store: StoreKind;
-  singleSlideId?: string | null;
 };
 
 export function getExportTargetById(id: string): ExportTarget | undefined {
@@ -72,8 +69,11 @@ export function buildExportZipPath(
   slideIndex: number,
   layoutName: string,
   preset: FolderPreset,
+  // 1-based position within the selected set. Defaults to deck order; pass
+  // the selection position so deselected screens leave no numbering gaps.
+  position1Based: number = slideIndex + 1,
 ): string {
-  const num = String(slideIndex + 1).padStart(2, "0");
+  const num = String(position1Based).padStart(2, "0");
   const filename = `${num}-${layoutName}.png`;
 
   if (preset === "fastlane") {

@@ -178,6 +178,7 @@ export function Phone({ src, alt = "", style, hideEmpty }: FrameProps) {
 
           {/* Screenshot Content */}
           {resolved ? (
+            // eslint-disable-next-line @next/next/no-img-element -- canvas pixels, not LCP content
             <img
               src={resolved}
               alt={alt}
@@ -297,6 +298,7 @@ export function IPad({ src, alt = "", style, hideEmpty }: FrameProps) {
         >
           {/* Screenshot Content */}
           {resolved ? (
+            // eslint-disable-next-line @next/next/no-img-element -- canvas pixels, not LCP content
             <img
               src={resolved}
               alt={alt}

@@ -7,7 +7,6 @@ import type {
   Device,
   ElementId,
   ElementTransform,
-  Orientation,
   ScreenBackground,
   SelectedElement,
   Slide,
@@ -25,7 +24,7 @@ import {
 } from "@/lib/constants";
 import { toTextElementId } from "@/lib/elements";
 import { img } from "@/lib/image-cache";
-import { pickText, resolveScreenshot } from "@/lib/locale";
+import { pickText, resolveScreenshot, isRtlLocale } from "@/lib/locale";
 import { fontStack } from "@/lib/fonts";
 import { DEFAULT_HEADLINE_FONT, DEFAULT_LABEL_FONT } from "@/lib/defaults";
 import { IPad, Phone } from "./device-frames";
@@ -37,17 +36,17 @@ type FrameComp = React.ComponentType<{
   hideEmpty?: boolean;
 }>;
 
-export function getCanvas(device?: Device, _orientation?: Orientation) {
+export function getCanvas(device?: Device) {
   const c = CANVAS[device ?? "iphone"] ?? CANVAS.iphone;
   return { cW: c.w, cH: c.h };
 }
 
 // Aspect ratio (w/h) of each device frame — must match device-frames.tsx
-function getFrameAspect(device?: Device, _orientation?: Orientation) {
+function getFrameAspect(device?: Device) {
   return device === "ipad" ? IPAD_MK_RATIO : MK_RATIO;
 }
 
-export function getFrameForDevice(device?: Device, _orientation?: Orientation): {
+export function getFrameForDevice(device?: Device): {
   Comp: FrameComp;
   widthFn: (cW: number, cH: number) => number;
   smallWidthFn: (cW: number, cH: number) => number;
@@ -67,11 +66,8 @@ type EditHandlers = {
 type Props = {
   slide: Slide;
   device: Device;
-  orientation: Orientation;
   theme: Theme;
   locale: string;
-  appName?: string;
-  appIcon?: string;
   editable?: boolean;
   edit?: EditHandlers;
   selectedElementId?: ElementId | null;
@@ -97,14 +93,13 @@ type DeckEditHandlers = {
   onSelectScreen?: (slideId: string) => void;
 };
 
+export type { DeckEditHandlers };
+
 type DeckCanvasProps = {
   slides: Slide[];
   device: Device;
-  orientation: Orientation;
   theme: Theme;
   locale: string;
-  appName?: string;
-  appIcon?: string;
   connectedCanvas?: boolean;
   editable?: boolean;
   edit?: DeckEditHandlers;
@@ -130,6 +125,7 @@ function EditableText({
   style,
   multiline = false,
   placeholder,
+  label,
   onFocus,
 }: {
   value: string;
@@ -138,9 +134,20 @@ function EditableText({
   style?: React.CSSProperties;
   multiline?: boolean;
   placeholder?: string;
+  label?: string;
   onFocus?: () => void;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const composingRef = React.useRef(false);
+  // Last text handed to onChange, plus the latest committed prop value — a
+  // flush matching either is a no-op, so plain blurs never churn state,
+  // history, or memo identities.
+  const lastSentRef = React.useRef<string | null>(null);
+  const valueLiveRef = React.useRef(value);
+  React.useEffect(() => {
+    valueLiveRef.current = value;
+  }, [value]);
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -149,11 +156,41 @@ function EditableText({
       el.textContent = incoming;
     }
   }, [value]);
+  // Cleanup pending commit on unmount without writing (the screen may be
+  // gone; locale/screen switches always blur first, which flushes).
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
-  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+  const readText = (el: HTMLDivElement) => {
+    const text = (el.innerText || "").replace(/\u00a0/g, " ");
+    return multiline ? text : text.replace(/\n/g, "");
+  };
+
+  const flush = React.useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const el = ref.current;
+    if (!el || !onChange) return;
+    const text = readText(el);
+    if (text === lastSentRef.current || text === (valueLiveRef.current || "")) return;
+    lastSentRef.current = text;
+    onChange(text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onChange, multiline]);
+
+  const handleInput = () => {
     if (!onChange) return;
-    const text = (e.currentTarget.innerText || "").replace(/\u00a0/g, " ");
-    onChange(multiline ? text : text.replace(/\n/g, ""));
+    if (composingRef.current) return; // commit on compositionend instead
+    if (timerRef.current) clearTimeout(timerRef.current);
+    // DOM already shows the keystroke; the parent commit is debounced so a
+    // typing burst re-renders the slide once, not per character. Blur always
+    // flushes first (it fires before any toolbar/sidebar click takes effect).
+    timerRef.current = setTimeout(flush, 250);
   };
 
   // Strip rich-text formatting on paste (web pages, docs, etc. carry inline
@@ -181,9 +218,25 @@ function EditableText({
       contentEditable={editable}
       suppressContentEditableWarning
       data-placeholder={placeholder}
+      role={editable ? "textbox" : undefined}
+      aria-label={editable ? label : undefined}
+      aria-multiline={editable ? multiline || undefined : undefined}
+      aria-placeholder={editable ? placeholder : undefined}
       onInput={handleInput}
       onPaste={handlePaste}
       onFocus={() => onFocus?.()}
+      onBlur={() => flush()}
+      onCompositionStart={() => {
+        composingRef.current = true;
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+      }}
+      onCompositionEnd={() => {
+        composingRef.current = false;
+        flush();
+      }}
       onKeyDown={(e) => {
         if (!multiline && e.key === "Enter") {
           e.preventDefault();
@@ -244,14 +297,23 @@ function Caption({
   // Scale typography off the *shorter* dimension so landscape layouts don't
   // produce headlines so tall they overlap the device frame.
   const unit = Math.min(cW, cH);
+  // RTL locales (ar-SA, he) read right-to-left: flip left alignment and set
+  // bidi context so punctuation/numbers order correctly in preview + export.
+  const rtl = isRtlLocale(locale);
+  const effectiveAlign = align === "left" && rtl ? "right" : align;
   return (
-    <div style={{ textAlign: align, position: "relative", width: "100%" }}>
+    <div
+      style={{ textAlign: effectiveAlign, position: "relative", width: "100%" }}
+      dir={rtl ? "rtl" : undefined}
+      lang={locale || undefined}
+    >
       <EditableText
         value={pickText(slide.label, locale)}
         editable={editable}
         onChange={edit?.onLabelChange}
         onFocus={onFocus}
         placeholder="LABEL"
+        label="Label"
         style={{
           fontSize: unit * 0.028,
           fontWeight: 600,
@@ -270,6 +332,7 @@ function Caption({
         onChange={edit?.onHeadlineChange}
         onFocus={onFocus}
         placeholder="Headline goes here"
+        label="Headline"
         style={{
           fontSize: unit * 0.092,
           fontWeight: 700,
@@ -444,10 +507,10 @@ function rectFor(
   };
 }
 
-function getSlideGeometry(slide: Slide, device: Device, orientation: Orientation) {
-  const { cW, cH } = getCanvas(device, orientation);
-  const { Comp: Frame, widthFn, smallWidthFn } = getFrameForDevice(device, orientation);
-  const frameAspect = getFrameAspect(device, orientation);
+function getSlideGeometry(slide: Slide, device: Device) {
+  const { cW, cH } = getCanvas(device);
+  const { Comp: Frame, widthFn, smallWidthFn } = getFrameForDevice(device);
+  const frameAspect = getFrameAspect(device);
   const fwFrac = widthFn(cW, cH);
   const fwSmallFrac = smallWidthFn(cW, cH);
   const defaults = getDefaultRects(slide.layout, cW, cH, frameAspect, fwFrac, fwSmallFrac);
@@ -457,7 +520,6 @@ function getSlideGeometry(slide: Slide, device: Device, orientation: Orientation
 export function getElementTransform(
   slide: Slide,
   device: Device,
-  orientation: Orientation,
   id: ElementId,
 ): ElementTransform | undefined {
   if (id.startsWith("text:")) {
@@ -465,7 +527,7 @@ export function getElementTransform(
     const textElement = slide.textElements?.find((element) => element.id === textId);
     return textElement?.transform;
   }
-  const { defaults } = getSlideGeometry(slide, device, orientation);
+  const { defaults } = getSlideGeometry(slide, device);
   const rect = rectFor(id as BuiltInElementId, slide, defaults);
   if (!rect) return undefined;
   const saved = slide.transforms?.[id as BuiltInElementId];
@@ -487,14 +549,11 @@ function defaultElementZ(id: BuiltInElementId): number {
 
 // ---------- Main single-screen canvas ----------
 
-export function SlideCanvas({
+function SlideCanvasInner({
   slide,
   device,
-  orientation,
   theme,
   locale,
-  appName,
-  appIcon,
   editable,
   edit,
   selectedElementId = null,
@@ -504,7 +563,7 @@ export function SlideCanvas({
   labelFont,
   background,
 }: Props) {
-  const { cW, cH } = getCanvas(device, orientation);
+  const { cW, cH } = getCanvas(device);
 
   const handleBackgroundMouseDown = editable
     ? (e: React.MouseEvent<HTMLDivElement>) => {
@@ -522,11 +581,10 @@ export function SlideCanvas({
         overflow: "hidden",
       }}
     >
-            <SlideBackground slide={slide} background={slide.background ?? background} cW={cW} cH={cH} theme={theme} />
+            <SlideBackground slide={slide} background={slide.background ?? background} cW={cW} theme={theme} />
       <SlideElements
         slide={slide}
         device={device}
-        orientation={orientation}
         theme={theme}
         locale={locale}
         editable={editable}
@@ -545,16 +603,142 @@ export function SlideCanvas({
   );
 }
 
+// Shallow compare is exact: slide identity is preserved for untouched slides
+// and every other prop here is a scalar or stable reference.
+export const SlideCanvas = React.memo(SlideCanvasInner);
+
 // ---------- Connected deck canvas ----------
 
-export function DeckCanvas({
+function areDeckPropsEqual(prev: DeckCanvasProps, next: DeckCanvasProps): boolean {
+  if (prev.slides.length !== next.slides.length) return false;
+  for (let i = 0; i < prev.slides.length; i++) {
+    if (prev.slides[i] !== next.slides[i]) return false;
+  }
+  return (
+    prev.device === next.device &&
+    prev.theme === next.theme &&
+    prev.locale === next.locale &&
+    prev.connectedCanvas === next.connectedCanvas &&
+    prev.editable === next.editable &&
+    prev.edit === next.edit &&
+    prev.selectedElement === next.selectedElement &&
+    prev.activeSlideId === next.activeSlideId &&
+    prev.previewScale === next.previewScale &&
+    prev.hideEmpty === next.hideEmpty &&
+    prev.showGuides === next.showGuides &&
+    prev.headlineFont === next.headlineFont &&
+    prev.labelFont === next.labelFont &&
+    prev.background === next.background
+  );
+}
+
+type MemoSlideProps = Omit<SlideElementsProps, "edit"> & {
+  edit?: DeckEditHandlers;
+  connectedCanvas: boolean;
+  wrapLeft: number;
+};
+
+const MemoSlide = React.memo(
+  function MemoSlide({
+    connectedCanvas,
+    wrapLeft,
+    ...elementsProps
+  }: MemoSlideProps) {
+    const {
+      slide,
+      device,
+      theme,
+      locale,
+      editable,
+      edit,
+      selectedElementId,
+      previewScale,
+      hideEmpty,
+      headlineFont,
+      labelFont,
+      screenX,
+      boundsW,
+      boundsH,
+      allowCrossScreen,
+    } = elementsProps;
+    const perSlideEdit: EditHandlers | undefined = React.useMemo(
+      () =>
+        editable
+          ? {
+              onLabelChange: (v) => edit?.onLabelChange?.(slide.id, v),
+              onHeadlineChange: (v) => edit?.onHeadlineChange?.(slide.id, v),
+              onTextElementTextChange: (id, v) =>
+                edit?.onTextElementTextChange?.(slide.id, id, v),
+              onElementChange: (id, t) => edit?.onElementChange?.(slide.id, id, t),
+              onSelectElement: (id) => {
+                edit?.onSelectScreen?.(slide.id);
+                edit?.onSelectElement?.(id ? { slideId: slide.id, elementId: id } : null);
+              },
+            }
+          : undefined,
+      // slide.id is stable for the lifetime of this slide identity.
+      [editable, edit, slide.id],
+    );
+    const elements = (
+      <SlideElements
+        slide={slide}
+        device={device}
+        theme={theme}
+        locale={locale}
+        editable={editable}
+        edit={perSlideEdit}
+        selectedElementId={selectedElementId}
+        previewScale={previewScale}
+        hideEmpty={hideEmpty}
+        headlineFont={headlineFont}
+        labelFont={labelFont}
+        screenX={screenX}
+        boundsW={boundsW}
+        boundsH={boundsH}
+        allowCrossScreen={allowCrossScreen}
+      />
+    );
+    if (connectedCanvas) return elements;
+    return (
+      <div
+        style={{
+          position: "absolute",
+          left: wrapLeft,
+          top: 0,
+          width: boundsW,
+          height: boundsH,
+          overflow: "hidden",
+        }}
+      >
+        {elements}
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.slide === next.slide &&
+    prev.device === next.device &&
+    prev.theme === next.theme &&
+    prev.locale === next.locale &&
+    prev.editable === next.editable &&
+    prev.edit === next.edit &&
+    prev.selectedElementId === next.selectedElementId &&
+    prev.previewScale === next.previewScale &&
+    prev.hideEmpty === next.hideEmpty &&
+    prev.headlineFont === next.headlineFont &&
+    prev.labelFont === next.labelFont &&
+    prev.screenX === next.screenX &&
+    prev.boundsW === next.boundsW &&
+    prev.boundsH === next.boundsH &&
+    prev.allowCrossScreen === next.allowCrossScreen &&
+    prev.connectedCanvas === next.connectedCanvas &&
+    prev.wrapLeft === next.wrapLeft,
+);
+
+function DeckCanvasInner({
   slides,
   device,
-  orientation,
   theme,
   locale,
-  appName,
-  appIcon,
   connectedCanvas = true,
   editable,
   edit,
@@ -567,7 +751,7 @@ export function DeckCanvas({
   labelFont,
   background,
 }: DeckCanvasProps) {
-  const { cW, cH } = getCanvas(device, orientation);
+  const { cW, cH } = getCanvas(device);
   const totalW = Math.max(1, slides.length) * cW;
 
   return (
@@ -599,81 +783,53 @@ export function DeckCanvas({
               overflow: "hidden",
             }}
           >
-      <SlideBackground slide={slide} background={slide.background ?? background} cW={cW} cH={cH} theme={theme} />
+      <SlideBackground slide={slide} background={slide.background ?? background} cW={cW} theme={theme} />
             {showGuides && <ScreenGuide cW={cW} cH={cH} index={index} active={active} />}
           </div>
         );
       })}
 
-      {slides.map((slide, index) => {
-        const selectedElementId =
-          selectedElement?.slideId === slide.id ? selectedElement.elementId : null;
-        const perSlideEdit: EditHandlers | undefined = editable
-          ? {
-              onLabelChange: (v) => edit?.onLabelChange?.(slide.id, v),
-              onHeadlineChange: (v) => edit?.onHeadlineChange?.(slide.id, v),
-              onTextElementTextChange: (id, v) => edit?.onTextElementTextChange?.(slide.id, id, v),
-              onElementChange: (id, t) => edit?.onElementChange?.(slide.id, id, t),
-              onSelectElement: (id) => {
-                edit?.onSelectScreen?.(slide.id);
-                edit?.onSelectElement?.(id ? { slideId: slide.id, elementId: id } : null);
-              },
-            }
-          : undefined;
-
-        const elements = (
-          <SlideElements
-            key={`${slide.id}-elements`}
-            slide={slide}
-            device={device}
-            orientation={orientation}
-            theme={theme}
-            locale={locale}
-            editable={editable}
-            edit={perSlideEdit}
-            selectedElementId={selectedElementId}
-            previewScale={previewScale}
-            hideEmpty={hideEmpty}
-            headlineFont={headlineFont}
-            labelFont={labelFont}
-            screenX={connectedCanvas ? index * cW : 0}
-            boundsW={connectedCanvas ? totalW : cW}
-            boundsH={cH}
-            allowCrossScreen={connectedCanvas}
-          />
-        );
-        if (connectedCanvas) return elements;
-        return (
-          <div
-            key={`${slide.id}-elements-isolated`}
-            style={{
-              position: "absolute",
-              left: index * cW,
-              top: 0,
-              width: cW,
-              height: cH,
-              overflow: "hidden",
-            }}
-          >
-            {elements}
-          </div>
-        );
-      })}
+      {slides.map((slide, index) => (
+        <MemoSlide
+          key={`${slide.id}-elements`}
+          slide={slide}
+          device={device}
+          theme={theme}
+          locale={locale}
+          editable={editable}
+          edit={edit}
+          selectedElementId={
+            selectedElement?.slideId === slide.id ? selectedElement.elementId : null
+          }
+          previewScale={previewScale}
+          hideEmpty={hideEmpty}
+          headlineFont={headlineFont}
+          labelFont={labelFont}
+          screenX={connectedCanvas ? index * cW : 0}
+          boundsW={connectedCanvas ? totalW : cW}
+          boundsH={cH}
+          allowCrossScreen={connectedCanvas}
+          connectedCanvas={connectedCanvas}
+          wrapLeft={index * cW}
+        />
+      ))}
     </div>
   );
 }
+
+const SlideElements = React.memo(SlideElementsInner, areSlideElementsEqual);
+
+export const DeckCanvas = React.memo(DeckCanvasInner, areDeckPropsEqual);
 
 function SlideBackground({
   slide,
   background,
   cW,
-  cH,
   theme,
 }: {
   slide: Slide;
   background?: ScreenBackground;
   cW: number;
-  cH: number;
   theme: Theme;
 }) {
   const inverted = !!slide.inverted;
@@ -827,6 +983,7 @@ function StaticImage({
     );
   }
   return (
+    // eslint-disable-next-line @next/next/no-img-element -- canvas pixels, not LCP content
     <img
       src={src}
       alt=""
@@ -844,27 +1001,9 @@ function StaticImage({
   );
 }
 
-function SlideElements({
-  slide,
-  device,
-  orientation,
-  theme,
-  locale,
-  editable,
-  edit,
-  selectedElementId,
-  previewScale,
-  hideEmpty,
-  headlineFont,
-  labelFont,
-  screenX,
-  boundsW,
-  boundsH,
-  allowCrossScreen,
-}: {
+type SlideElementsProps = {
   slide: Slide;
   device: Device;
-  orientation: Orientation;
   theme: Theme;
   locale: string;
   editable?: boolean;
@@ -878,10 +1017,51 @@ function SlideElements({
   boundsW: number;
   boundsH: number;
   allowCrossScreen: boolean;
-}) {
+};
+
+function areSlideElementsEqual(prev: SlideElementsProps, next: SlideElementsProps): boolean {
+  // Slide identity is preserved for untouched slides by every mutation, so a
+  // reference check isolates re-renders to the edited slide. All other props
+  // are scalars or stable references by construction.
+  return (
+    prev.slide === next.slide &&
+    prev.device === next.device &&
+    prev.theme === next.theme &&
+    prev.locale === next.locale &&
+    prev.editable === next.editable &&
+    prev.edit === next.edit &&
+    prev.selectedElementId === next.selectedElementId &&
+    prev.previewScale === next.previewScale &&
+    prev.hideEmpty === next.hideEmpty &&
+    prev.headlineFont === next.headlineFont &&
+    prev.labelFont === next.labelFont &&
+    prev.screenX === next.screenX &&
+    prev.boundsW === next.boundsW &&
+    prev.boundsH === next.boundsH &&
+    prev.allowCrossScreen === next.allowCrossScreen
+  );
+}
+
+function SlideElementsInner({
+  slide,
+  device,
+  theme,
+  locale,
+  editable,
+  edit,
+  selectedElementId,
+  previewScale,
+  hideEmpty,
+  headlineFont,
+  labelFont,
+  screenX,
+  boundsW,
+  boundsH,
+  allowCrossScreen,
+}: SlideElementsProps) {
   const screenshot = resolveScreenshot(slide.screenshot, locale);
   const screenshotSecondary = resolveScreenshot(slide.screenshotSecondary, locale);
-  const { cW, cH, Frame, frameAspect, defaults } = getSlideGeometry(slide, device, orientation);
+  const { cW, cH, Frame, frameAspect, defaults } = getSlideGeometry(slide, device);
   const inverted = !!slide.inverted;
   // Static screens render one full-bleed image plus any overlay text
   // elements — no frames or caption. Branching here covers SlideCanvas,
@@ -956,6 +1136,7 @@ function SlideElements({
         selected={selectedElementId === "caption"}
         onSelect={() => edit?.onSelectElement?.("caption")}
         allowOverflow={allowCrossScreen}
+        label="Headline"
       >
         <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "flex-start" }}>
           {inner}
@@ -991,6 +1172,7 @@ function SlideElements({
         allowOverflow
         selected={selectedElementId === id}
         onSelect={() => edit?.onSelectElement?.(id)}
+        label={id === "deviceSecondary" ? "Back device" : "Device"}
       >
         <Frame
           src={src}
@@ -1007,6 +1189,9 @@ function SlideElements({
     const rotation = rect.rotation ?? 0;
     const zIndex = rect.zIndex ?? 5 + index;
     const textColor = textElement.color || (inverted ? theme.fgAlt : theme.fg);
+    // Unset alignment follows the locale direction: right for RTL.
+    const rtl = isRtlLocale(locale);
+    const effectiveAlign = textElement.align ?? (rtl ? "right" : "center");
     return (
       <Movable
         key={textElement.id}
@@ -1030,17 +1215,20 @@ function SlideElements({
         selected={selectedElementId === elementId}
         onSelect={() => edit?.onSelectElement?.(elementId)}
         allowOverflow={allowCrossScreen}
+        label={`Overlay text ${index + 1}`}
       >
         <div
+          dir={rtl ? "rtl" : undefined}
+          lang={locale || undefined}
           style={{
             width: "100%",
             height: "100%",
             display: "flex",
             alignItems: "center",
             justifyContent:
-              textElement.align === "right"
+              effectiveAlign === "right"
                 ? "flex-end"
-                : textElement.align === "left"
+                : effectiveAlign === "left"
                   ? "flex-start"
                   : "center",
             padding: `${Math.min(cW, cH) * 0.012}px`,
@@ -1053,13 +1241,14 @@ function SlideElements({
             onChange={(value) => edit?.onTextElementTextChange?.(textElement.id, value)}
             onFocus={() => edit?.onSelectElement?.(elementId)}
             placeholder="Text"
+            label={`Overlay text ${index + 1}`}
             style={{
               width: "100%",
               color: textColor,
               fontSize: textElement.fontSize ?? Math.min(cW, cH) * 0.06,
               fontWeight: textElement.fontWeight ?? 700,
               lineHeight: 1.05,
-              textAlign: textElement.align ?? "center",
+              textAlign: effectiveAlign,
               textShadow: inverted ? "0 2px 18px rgba(0,0,0,0.22)" : "0 2px 18px rgba(255,255,255,0.2)",
               fontFamily: fontStack(labelFont || DEFAULT_LABEL_FONT),
             }}
@@ -1128,6 +1317,7 @@ function Movable({
   allowOverflow = false,
   selected = false,
   onSelect,
+  label,
 }: {
   rect: Rect;
   boundsW: number;
@@ -1142,6 +1332,7 @@ function Movable({
   allowOverflow?: boolean;
   selected?: boolean;
   onSelect?: () => void;
+  label?: string;
 }) {
   const rotationRef = React.useRef(rotation);
   React.useEffect(() => {
@@ -1191,11 +1382,42 @@ function Movable({
   // the authoritative bounding box for drag/resize math. A bare mousedown
   // listener (no stopPropagation — that would prevent react-rnd from starting
   // a drag) marks the element as the current selection.
+  // Keyboard path: the wrapper is focusable when editable; arrows nudge the
+  // element (Shift = larger step) so positioning never requires a mouse.
+  const nudge = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!editable) return;
+    const step = e.shiftKey ? 64 : 8;
+    let dx = 0;
+    let dy = 0;
+    if (e.key === "ArrowLeft") dx = -step;
+    else if (e.key === "ArrowRight") dx = step;
+    else if (e.key === "ArrowUp") dy = -step;
+    else if (e.key === "ArrowDown") dy = step;
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect?.();
+    const cur = clampRect(rect, boundsW, boundsH, allowOverflow);
+    const next = clampRect(
+      { x: cur.x + dx, y: cur.y + dy, width: cur.width, height: cur.height },
+      boundsW,
+      boundsH,
+      allowOverflow,
+    );
+    onChange({ ...next, rotation, zIndex });
+  };
   const rotated = (
     <div
       onMouseDown={() => {
         if (editable) onSelect?.();
       }}
+      onFocus={() => {
+        if (editable) onSelect?.();
+      }}
+      onKeyDown={nudge}
+      tabIndex={editable ? 0 : undefined}
+      role={editable ? "button" : undefined}
+      aria-label={editable && label ? `${label}. Arrow keys move, Shift jumps.` : undefined}
       style={{
         width: "100%",
         height: "100%",

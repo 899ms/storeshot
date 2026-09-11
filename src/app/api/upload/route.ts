@@ -30,6 +30,11 @@ export async function POST(req: Request) {
   if (!body?.dataUrl || typeof body.dataUrl !== "string") {
     return NextResponse.json({ ok: false, error: "Missing dataUrl" }, { status: 400 });
   }
+  // 8MB of binary is ~10.7MB base64 on the wire — reject before decoding so
+  // a giant body can't OOM the server in Buffer.from.
+  if (body.dataUrl.length > 12 * 1024 * 1024) {
+    return NextResponse.json({ ok: false, error: "Image too large (>8MB)" }, { status: 413 });
+  }
   const parsed = parseDataUrl(body.dataUrl);
   if (!parsed) {
     return NextResponse.json({ ok: false, error: "Unsupported data URL" }, { status: 400 });

@@ -10,6 +10,35 @@ import { assetUrl } from "./workspaces";
 const cache = new Map<string, string>();
 const failed = new Set<string>();
 
+// Insertion-order eviction caps: base64 data URIs are ~33% larger than
+// binary, and keys are workspace-scoped, so switching workspaces used to
+// accumulate entries forever.
+const MAX_CACHE_ENTRIES = 50;
+const MAX_FAILED_ENTRIES = 200;
+
+function evictIfNeeded() {
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break;
+    cache.delete(oldest.value);
+  }
+  if (failed.size > MAX_FAILED_ENTRIES) {
+    const drop = failed.size - MAX_FAILED_ENTRIES;
+    let n = 0;
+    for (const key of failed) {
+      failed.delete(key);
+      if (++n >= drop) break;
+    }
+  }
+}
+
+// Release everything (call on workspace switch — entries are keyed per
+// workspace and never reused across them).
+export function clearImageCache() {
+  cache.clear();
+  failed.clear();
+}
+
 async function fetchAsDataUrl(path: string): Promise<string | null> {
   try {
     const resp = await fetch(assetUrl(path));
@@ -30,23 +59,29 @@ export async function preloadImages(
   paths: string[],
   options: { retryFailed?: boolean } = {},
 ): Promise<void> {
-  await Promise.all(
-    paths
-      .filter(Boolean)
-      .filter((p) => {
-        const key = assetUrl(p);
-        return !cache.has(key) && (options.retryFailed || !failed.has(key));
-      })
-      .map(async (p) => {
-        const key = assetUrl(p);
-        const data = await fetchAsDataUrl(p);
-        if (data) {
-          cache.set(key, data);
-          failed.delete(key);
-        } else {
-          failed.add(key);
-        }
-      }),
+  const PRELOAD_CONCURRENCY = 6;
+  const queue = paths.filter(Boolean).filter((p) => {
+    const key = assetUrl(p);
+    return !cache.has(key) && (options.retryFailed || !failed.has(key));
+  });
+  async function worker() {
+    while (queue.length > 0) {
+      const p = queue.shift();
+      if (!p) break;
+      const key = assetUrl(p);
+      const data = await fetchAsDataUrl(p);
+      if (data) {
+        cache.set(key, data);
+        failed.delete(key);
+        evictIfNeeded();
+      } else {
+        failed.add(key);
+        evictIfNeeded();
+      }
+    }
+  }
+  await Promise.allSettled(
+    Array.from({ length: Math.min(PRELOAD_CONCURRENCY, queue.length) }, () => worker()),
   );
 }
 
@@ -64,6 +99,7 @@ export function setImage(path: string, dataUrl: string) {
   const key = path.startsWith("data:") ? path : assetUrl(path);
   cache.set(key, dataUrl);
   failed.delete(key);
+  evictIfNeeded();
 }
 
 export function didFail(path: string | undefined): boolean {

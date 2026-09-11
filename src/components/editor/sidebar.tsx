@@ -18,7 +18,7 @@ import {
 import { ImagePlus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { Device, Orientation, ScreenBackground, Slide, Theme } from "@/lib/types";
+import type { Device, ScreenBackground, Slide, Theme } from "@/lib/types";
 import { newSlide } from "@/lib/defaults";
 import { SlideThumb } from "./slide-thumb";
 
@@ -26,11 +26,8 @@ type Props = {
   slides: Slide[];
   activeId: string | null;
   device: Device;
-  orientation: Orientation;
   theme: Theme;
   locale: string;
-  appName?: string;
-  appIcon?: string;
   connectedCanvas: boolean;
   headlineFont?: string;
   labelFont?: string;
@@ -47,11 +44,8 @@ export function Sidebar({
   slides,
   activeId,
   device,
-  orientation,
   theme,
   locale,
-  appName,
-  appIcon,
   connectedCanvas,
   headlineFont,
   labelFont,
@@ -98,11 +92,8 @@ export function Sidebar({
                   index={i}
                   active={slide.id === activeId}
                   device={device}
-                  orientation={orientation}
                   theme={theme}
                   locale={locale}
-                  appName={appName}
-                  appIcon={appIcon}
                   connectedCanvas={connectedCanvas}
                   headlineFont={headlineFont}
                   labelFont={labelFont}

@@ -9,7 +9,6 @@ import type {
   Device,
   ElementId,
   ElementTransform,
-  Orientation,
   ScreenBackground,
   SelectedElement,
   Slide,
@@ -21,11 +20,8 @@ type Props = {
   slides: Slide[];
   activeSlideId: string | null;
   device: Device;
-  orientation: Orientation;
   theme: Theme;
   locale: string;
-  appName?: string;
-  appIcon?: string;
   connectedCanvas: boolean;
   selectedElement: SelectedElement | null;
   headlineFont?: string;
@@ -45,11 +41,8 @@ export function PreviewStage({
   slides,
   activeSlideId,
   device,
-  orientation,
   theme,
   locale,
-  appName,
-  appIcon,
   connectedCanvas,
   selectedElement,
   headlineFont,
@@ -67,7 +60,7 @@ export function PreviewStage({
   const suppressNextActiveScreenPanRef = React.useRef(false);
   const [fitScale, setFitScale] = React.useState(0.2);
   const [zoom, setZoom] = React.useState(1);
-  const { cW, cH } = getCanvas(device, orientation);
+  const { cW, cH } = getCanvas(device);
   const totalW = Math.max(1, slides.length) * cW;
   const scale = fitScale * zoom;
   const activeIndex = Math.max(0, slides.findIndex((slide) => slide.id === activeSlideId));
@@ -90,7 +83,7 @@ export function PreviewStage({
 
   React.useEffect(() => {
     setZoom(1);
-  }, [device, orientation]);
+  }, [device]);
 
   React.useEffect(() => {
     if (suppressNextActiveScreenPanRef.current) {
@@ -103,7 +96,11 @@ export function PreviewStage({
     const screenLeft = activeIndex * cW * scale;
     const screenWidth = cW * scale;
     const targetLeft = Math.max(0, screenLeft - (scroller.clientWidth - screenWidth) / 2);
-    scroller.scrollTo({ left: targetLeft, behavior: "smooth" });
+    const smooth =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    scroller.scrollTo({ left: targetLeft, behavior: smooth ? "smooth" : "auto" });
   }, [activeIndex, activeSlide, cW, scale]);
 
   const handleCanvasActiveSlideChange = React.useCallback(
@@ -116,12 +113,43 @@ export function PreviewStage({
     [activeSlideId, onActiveSlideChange],
   );
 
+  // Slide lookup via ref so the edit-handler object keeps a stable identity
+  // across keystrokes (the slides array identity churns on every edit).
+  const slidesRef = React.useRef(slides);
+  React.useEffect(() => {
+    slidesRef.current = slides;
+  }, [slides]);
+  const deckEdit = React.useMemo(
+    () => ({
+      onLabelChange: (slideId: string, value: string) => {
+        const slide = slidesRef.current.find((s) => s.id === slideId);
+        if (slide) onLabelChange(slide, value);
+      },
+      onHeadlineChange: (slideId: string, value: string) => {
+        const slide = slidesRef.current.find((s) => s.id === slideId);
+        if (slide) onHeadlineChange(slide, value);
+      },
+      onTextElementTextChange,
+      onElementChange,
+      onSelectElement,
+      onSelectScreen: handleCanvasActiveSlideChange,
+    }),
+    [
+      onLabelChange,
+      onHeadlineChange,
+      onTextElementTextChange,
+      onElementChange,
+      onSelectElement,
+      handleCanvasActiveSlideChange,
+    ],
+  );
+
   return (
     <div
       ref={containerRef}
       className="relative h-full w-full overflow-hidden bg-[radial-gradient(70%_70%_at_50%_35%,_hsl(var(--background))_0%,_hsl(var(--muted))_100%)]"
     >
-      <div ref={scrollerRef} className="h-full w-full overflow-auto p-12">
+      <div ref={scrollerRef} className="h-full w-full overflow-auto p-4 sm:p-12">
         <div
           style={{
             width: totalW * scale,
@@ -142,11 +170,8 @@ export function PreviewStage({
             <DeckCanvas
               slides={slides}
               device={device}
-              orientation={orientation}
               theme={theme}
               locale={locale}
-              appName={appName}
-              appIcon={appIcon}
               connectedCanvas={connectedCanvas}
               editable
               previewScale={scale}
@@ -156,20 +181,7 @@ export function PreviewStage({
               headlineFont={headlineFont}
               labelFont={labelFont}
               background={background}
-              edit={{
-                onLabelChange: (slideId, value) => {
-                  const slide = slides.find((s) => s.id === slideId);
-                  if (slide) onLabelChange(slide, value);
-                },
-                onHeadlineChange: (slideId, value) => {
-                  const slide = slides.find((s) => s.id === slideId);
-                  if (slide) onHeadlineChange(slide, value);
-                },
-                onTextElementTextChange,
-                onElementChange,
-                onSelectElement,
-                onSelectScreen: handleCanvasActiveSlideChange,
-              }}
+              edit={deckEdit}
             />
           </div>
         </div>

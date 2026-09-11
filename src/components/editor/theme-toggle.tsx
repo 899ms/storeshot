@@ -20,9 +20,8 @@ export function ThemeToggle({ disabled }: { disabled?: boolean }) {
     document.documentElement.classList.toggle("dark", next);
     try {
       localStorage.setItem(STORAGE_KEY, next ? "dark" : "light");
-    } catch (e) {
+    } catch {
       // storage unavailable (private mode etc.) — theme still applies
-      void e;
     }
     setDark(next);
   };

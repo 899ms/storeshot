@@ -15,15 +15,17 @@ import { DEFAULT_LOCALE, getLocaleFlag, getLocaleLabel } from "@/lib/locale";
 import { reportError } from "@/lib/error-log";
 import {
   translateSlidesForLocale,
+  countSentUnits,
+  findSourceSkips,
   TranslateError,
   type SlideTranslation,
 } from "@/lib/translate";
-import type { Slide } from "@/lib/types";
+import type { Device, Slide } from "@/lib/types";
 
 type LocaleStatus =
   | { state: "idle" }
   | { state: "running" }
-  | { state: "done"; count: number }
+  | { state: "done"; count: number; missing?: number }
   | { state: "error"; error: string };
 
 type Props = {
@@ -31,12 +33,14 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   locales: string[];
   slides: Slide[];
+  device: Device;
   sourceLocale?: string;
   disabled?: boolean;
   onApplyTranslations: (
     targetLocale: string,
     results: Record<string, SlideTranslation>,
     overwrite: boolean,
+    originDevice: Device,
   ) => void;
 };
 
@@ -45,6 +49,7 @@ export function TranslateDialog({
   onOpenChange,
   locales,
   slides,
+  device,
   sourceLocale = DEFAULT_LOCALE,
   disabled,
   onApplyTranslations,
@@ -60,10 +65,18 @@ export function TranslateDialog({
   const CONCURRENT_LOCALES = 5;
   const [statuses, setStatuses] = React.useState<Record<string, LocaleStatus>>({});
   const [bulkRunning, setBulkRunning] = React.useState(false);
-  const abortRef = React.useRef<AbortController | null>(null);
+  // Independent controllers: bulk Stop must never kill (or be stolen by)
+  // per-row single runs.
+  const bulkAbortRef = React.useRef<AbortController | null>(null);
+  const singleAbortsRef = React.useRef(new Map<string, AbortController>());
 
   React.useEffect(() => {
-    return () => abortRef.current?.abort();
+    const bulk = bulkAbortRef.current;
+    const singles = singleAbortsRef.current;
+    return () => {
+      bulk?.abort();
+      singles.forEach((c) => c.abort());
+    };
   }, []);
 
   const missingKey = !call.apiKey;
@@ -72,7 +85,11 @@ export function TranslateDialog({
   async function runOne(
     targetLocale: string,
     signal: AbortSignal,
-  ): Promise<{ ok: true } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; missing: number } | { ok: false; error: string }> {
+    // Pin the origin deck + slide ids at invocation: a device switch or
+    // delete/reorder mid-run must not misapply results to another deck.
+    // (The editor prunes results to ids still present and reports drops.)
+    const originDevice = device;
     setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "running" } }));
     try {
       const results = await translateSlidesForLocale(call, slides, sourceLocale, targetLocale, {
@@ -87,9 +104,16 @@ export function TranslateDialog({
           Object.keys(r.texts || {}).length,
         0,
       );
-      onApplyTranslations(targetLocale, results, true);
-      setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "done", count } }));
-      return { ok: true };
+      const sent = countSentUnits(slides, sourceLocale, targetLocale);
+      const missing = Math.max(0, sent - count);
+      if (sent > 0 && count === 0) {
+        const error = "Model returned no usable translations";
+        setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "error", error } }));
+        return { ok: false, error };
+      }
+      onApplyTranslations(targetLocale, results, true, originDevice);
+      setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "done", count, missing } }));
+      return { ok: true, missing };
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setStatuses((prev) => ({ ...prev, [targetLocale]: { state: "idle" } }));
@@ -104,9 +128,9 @@ export function TranslateDialog({
   async function runAll() {
     if (bulkRunning) return;
     const controller = new AbortController();
-    abortRef.current = controller;
+    bulkAbortRef.current = controller;
     setBulkRunning(true);
-    const outcomes = new Map<string, "ok" | string>();
+    const outcomes = new Map<string, { ok: true; missing: number } | { ok: false; error: string }>();
     try {
       const queue = [...targets];
       async function runWorker() {
@@ -115,8 +139,7 @@ export function TranslateDialog({
           const target = queue.shift();
           if (!target) break;
           try {
-            const result = await runOne(target, controller.signal);
-            outcomes.set(target, result.ok ? "ok" : result.error);
+            outcomes.set(target, await runOne(target, controller.signal));
           } catch {
             if (controller.signal.aborted) break;
             // aborts re-throw from runOne; per-locale errors return { ok: false }
@@ -129,29 +152,65 @@ export function TranslateDialog({
       );
       await Promise.allSettled(workers);
     } finally {
-      abortRef.current = null;
+      if (bulkAbortRef.current === controller) bulkAbortRef.current = null;
       setBulkRunning(false);
     }
     if (controller.signal.aborted) return;
     // Dialog may be closed while this ran — toast so the result is visible.
-    const ok = [...outcomes.values()].filter((v) => v === "ok").length;
-    const failures = [...outcomes.entries()].filter(([, v]) => v !== "ok");
+    const okEntries = [...outcomes.values()].filter(
+      (v): v is { ok: true; missing: number } => v.ok,
+    );
+    const failures = [...outcomes.entries()].filter(
+      (entry): entry is [string, { ok: false; error: string }] => !entry[1].ok,
+    );
+    const partial = okEntries.reduce((n, v) => n + v.missing, 0);
     if (failures.length > 0) {
       reportError(
         "translate",
         `${failures.length} of ${targets.length} locales failed to translate`,
         failures
           .slice(0, 5)
-          .map(([locale, error]) => `${locale}: ${error}`)
+          .map(([locale, result]) => `${locale}: ${result.error}`)
           .join("\n"),
       );
     }
-    if (ok === targets.length && targets.length > 0) {
-      toast.success(`Translated ${ok} locale${ok === 1 ? "" : "s"}`);
-    } else if (ok > 0) {
-      toast.warning(`Translated ${ok} of ${targets.length} locales — check errors`);
+    if (failures.length === 0 && targets.length > 0) {
+      const skipped = findSourceSkips(slides, sourceLocale).length;
+      if (partial > 0) {
+        toast.warning(
+          `Translated ${okEntries.length} locale${okEntries.length === 1 ? "" : "s"} with ${partial} missing string${partial === 1 ? "" : "s"} — check rows`,
+        );
+      } else {
+        toast.success(
+          `Translated ${okEntries.length} locale${okEntries.length === 1 ? "" : "s"}`,
+          {
+            description:
+              skipped > 0
+                ? `${skipped} field${skipped === 1 ? "" : "s"} skipped (no ${sourceLocale} source text)`
+                : undefined,
+          },
+        );
+      }
+    } else if (okEntries.length > 0) {
+      toast.warning(`Translated ${okEntries.length} of ${targets.length} locales — check errors`);
     } else if (targets.length > 0) {
       toast.error("Translation failed — check errors");
+    }
+  }
+
+  async function runSingle(targetLocale: string) {
+    const existing = singleAbortsRef.current.get(targetLocale);
+    if (existing) return;
+    const controller = new AbortController();
+    singleAbortsRef.current.set(targetLocale, controller);
+    try {
+      await runOne(targetLocale, controller.signal);
+    } catch {
+      // Aborts re-throw; status already reset to idle in runOne.
+    } finally {
+      if (singleAbortsRef.current.get(targetLocale) === controller) {
+        singleAbortsRef.current.delete(targetLocale);
+      }
     }
   }
 
@@ -159,14 +218,14 @@ export function TranslateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[70vh] max-w-2xl flex-col overflow-hidden p-0 gap-0">
+      <DialogContent className="flex max-h-[70vh] max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0 gap-0 sm:max-w-2xl">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle className="flex items-center gap-1.5 text-base font-bold">
             <Languages className="h-4 w-4 text-muted-foreground" /> Translate
           </DialogTitle>
           <DialogDescription className="text-xs">
-            AI translation from {getLocaleFlag(sourceLocale)} {sourceLocale} (English) to all
-            added locales. Uses your API key — keys stay in this browser only.
+            AI translation from {getLocaleFlag(sourceLocale)} {getLocaleLabel(sourceLocale)} to
+            all added locales. Uses your API key — keys stay in this browser only.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-6 py-4">
@@ -175,7 +234,7 @@ export function TranslateDialog({
               Batch translate to all added locales · from {getLocaleFlag(sourceLocale)}{" "}
               {sourceLocale}
               {bulkRunning && (
-                <span className="font-normal text-muted-foreground">
+                <span role="status" aria-live="polite" className="font-normal text-muted-foreground">
                   · {doneCount}/{targets.length}
                 </span>
               )}
@@ -187,7 +246,7 @@ export function TranslateDialog({
                   variant="destructive"
                   size="sm"
                   className="h-7 gap-1 text-[11px]"
-                  onClick={() => abortRef.current?.abort()}
+                  onClick={() => bulkAbortRef.current?.abort()}
                 >
                   <Square className="h-3 w-3 fill-current" /> Stop
                 </Button>
@@ -204,7 +263,7 @@ export function TranslateDialog({
                       : "Translate every screen to every added locale"
                   }
                 >
-                  <Languages className="h-3 w-3" /> Translate all
+                  <Languages className="h-3 w-3" /> Translate all locales
                 </Button>
               )}
             </div>
@@ -240,7 +299,7 @@ export function TranslateDialog({
                       ({target})
                     </span>
                   </span>
-                  {status.state === "done" && (
+                  {status.state === "done" && (status.missing ?? 0) === 0 && (
                     <span
                       className="flex shrink-0 items-center text-green-600 dark:text-green-400"
                       title={`${status.count} strings translated`}
@@ -248,6 +307,14 @@ export function TranslateDialog({
                       role="img"
                     >
                       <Check className="h-4 w-4" />
+                    </span>
+                  )}
+                  {status.state === "done" && (status.missing ?? 0) > 0 && (
+                    <span
+                      className="flex shrink-0 items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400"
+                      title={`${status.count} strings translated, ${status.missing} missing from model response`}
+                    >
+                      <AlertTriangle className="h-4 w-4" /> {status.count} · {status.missing} missing
                     </span>
                   )}
                   {status.state === "error" && (
@@ -266,13 +333,7 @@ export function TranslateDialog({
                     size="sm"
                     className="h-6 shrink-0 px-2 text-[11px]"
                     disabled={disabled || missingKey || status.state === "running" || bulkRunning}
-                    onClick={() => {
-                      const controller = new AbortController();
-                      abortRef.current = controller;
-                      void runOne(target, controller.signal).finally(() => {
-                        if (abortRef.current === controller) abortRef.current = null;
-                      });
-                    }}
+                    onClick={() => void runSingle(target)}
                   >
                     {status.state === "running" ? (
                       <span className="flex items-center gap-1">
