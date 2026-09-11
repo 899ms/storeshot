@@ -26,6 +26,7 @@ import { toTextElementId } from "@/lib/elements";
 import { img } from "@/lib/image-cache";
 import { pickText, resolveScreenshot, isRtlLocale } from "@/lib/locale";
 import { fontStack } from "@/lib/fonts";
+import { resolveHeadlineStyle, resolveLabelStyle } from "@/lib/caption-style";
 import { DEFAULT_HEADLINE_FONT, DEFAULT_LABEL_FONT } from "@/lib/defaults";
 import { IPad, Phone } from "./device-frames";
 
@@ -114,7 +115,14 @@ type DeckCanvasProps = {
   labelFont?: string;
   /** Project default background. A per-screen Slide.background wins. */
   background?: ScreenBackground;
+  /** Spacing between screens in canvas px. Preview uses it for isolated
+   * decks so separate pages read as separate; export always uses 0. */
+  gap?: number;
 };
+
+// Visible separation between isolated screens (canvas px). Connected decks
+// stay seamless (gap 0) because they render and export as one strip.
+export const ISOLATED_SCREEN_GAP = 96;
 
 // ---------- Editable text helpers ----------
 
@@ -297,6 +305,8 @@ function Caption({
   // Scale typography off the *shorter* dimension so landscape layouts don't
   // produce headlines so tall they overlap the device frame.
   const unit = Math.min(cW, cH);
+  const labelStyle = resolveLabelStyle(slide, unit, labelFont || DEFAULT_LABEL_FONT, accent);
+  const headlineStyle = resolveHeadlineStyle(slide, unit, headlineFont || DEFAULT_HEADLINE_FONT, fg);
   // RTL locales (ar-SA, he) read right-to-left: flip left alignment and set
   // bidi context so punctuation/numbers order correctly in preview + export.
   const rtl = isRtlLocale(locale);
@@ -315,14 +325,14 @@ function Caption({
         placeholder="LABEL"
         label="Label"
         style={{
-          fontSize: unit * 0.028,
-          fontWeight: 600,
+          fontSize: labelStyle.fontSize,
+          fontWeight: labelStyle.fontWeight,
           letterSpacing: unit * 0.0015,
-          color: accent,
+          color: labelStyle.color,
           textTransform: "uppercase",
           marginBottom: unit * 0.018,
           minHeight: unit * 0.03,
-          fontFamily: fontStack(labelFont || DEFAULT_LABEL_FONT),
+          fontFamily: fontStack(labelStyle.fontFamily),
         }}
       />
       <EditableText
@@ -334,12 +344,12 @@ function Caption({
         placeholder="Headline goes here"
         label="Headline"
         style={{
-          fontSize: unit * 0.092,
-          fontWeight: 700,
+          fontSize: headlineStyle.fontSize,
+          fontWeight: headlineStyle.fontWeight,
           lineHeight: 1.2,
           letterSpacing: -unit * 0.001,
-          color: fg,
-          fontFamily: fontStack(headlineFont || DEFAULT_HEADLINE_FONT),
+          color: headlineStyle.color,
+          fontFamily: fontStack(headlineStyle.fontFamily),
         }}
       />
     </div>
@@ -750,9 +760,11 @@ function DeckCanvasInner({
   headlineFont,
   labelFont,
   background,
+  gap = 0,
 }: DeckCanvasProps) {
   const { cW, cH } = getCanvas(device);
-  const totalW = Math.max(1, slides.length) * cW;
+  const stride = cW + gap;
+  const totalW = Math.max(1, slides.length) * cW + Math.max(0, slides.length - 1) * gap;
 
   return (
     <div
@@ -764,7 +776,7 @@ function DeckCanvasInner({
       }}
     >
       {slides.map((slide, index) => {
-        const screenX = index * cW;
+        const screenX = index * stride;
         const active = activeSlideId === slide.id;
         return (
           <div
@@ -805,12 +817,12 @@ function DeckCanvasInner({
           hideEmpty={hideEmpty}
           headlineFont={headlineFont}
           labelFont={labelFont}
-          screenX={connectedCanvas ? index * cW : 0}
+          screenX={connectedCanvas ? index * stride : 0}
           boundsW={connectedCanvas ? totalW : cW}
           boundsH={cH}
           allowCrossScreen={connectedCanvas}
           connectedCanvas={connectedCanvas}
-          wrapLeft={index * cW}
+          wrapLeft={index * stride}
         />
       ))}
     </div>
@@ -1250,7 +1262,7 @@ function SlideElementsInner({
               lineHeight: 1.05,
               textAlign: effectiveAlign,
               textShadow: inverted ? "0 2px 18px rgba(0,0,0,0.22)" : "0 2px 18px rgba(255,255,255,0.2)",
-              fontFamily: fontStack(labelFont || DEFAULT_LABEL_FONT),
+              fontFamily: fontStack(textElement.fontFamily || labelFont || DEFAULT_LABEL_FONT),
             }}
           />
         </div>

@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Download, Languages, Loader2, MoreHorizontal, Redo, RotateCcw, Save, Settings, Smartphone, Square, Tablet, Undo, UnfoldHorizontal } from "lucide-react";
+import { Download, Languages, Loader2, MoreHorizontal, Plus, Redo, RotateCcw, Save, Settings, Smartphone, Sparkles, Square, Tablet, Undo, UnfoldHorizontal } from "lucide-react";
 import { isMacShell } from "@/lib/native";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +23,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -43,7 +44,9 @@ type Props = {
   setDevice?: (v: Device) => void;
   onExport: () => void;
   onOpenSettings: () => void;
+  onOpenLocales: () => void;
   onOpenTranslate: () => void;
+  onShowOnboarding?: () => void;
   onStopExport?: () => void;
   onResetAll: () => void;
   onResetDevice?: () => void;
@@ -62,6 +65,10 @@ type Props = {
 // Set to true to restore the App name (rename) input in the top bar.
 // State, persistence, and export filenames keep working either way.
 const SHOW_APP_RENAME = false;
+
+// Sentinel menu value for the "Add more locales…" row. Intercepted in
+// onValueChange — never written to project state.
+const ADD_LOCALE_VALUE = "__add_locale__";
 
 export function Toolbar(props: Props) {
   const [resetOpen, setResetOpen] = React.useState(false);
@@ -140,24 +147,39 @@ export function Toolbar(props: Props) {
             <UnfoldHorizontal className="h-3.5 w-3.5" />
             <span className="hidden md:inline">{props.connectedCanvas ? "Connected" : "Isolated"}</span>
           </Button>
-          {showLocale ? <Separator orientation="vertical" className="h-5 shrink-0" /> : null}
+          <Separator orientation="vertical" className="h-5 shrink-0" />
 
-          {showLocale ? (
-            <Select value={props.locale} onValueChange={props.setLocale} disabled={props.busy}>
-              <SelectTrigger className="h-7 w-28 border-0 bg-transparent text-xs shadow-none focus:ring-0 lg:w-36" aria-label="Language">
-                <SelectValue placeholder="Language">
-                  {getLocaleFlag(props.locale)} {getLocaleLabel(props.locale)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                {props.locales.map((l) => (
-                  <SelectItem key={l} value={l}>
-                    {getLocaleFlag(l)} {getLocaleLabel(l)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
+          <Select
+            value={props.locale}
+            onValueChange={(v) => {
+              if (v === ADD_LOCALE_VALUE) {
+                props.onOpenLocales();
+                return;
+              }
+              props.setLocale(v);
+            }}
+            disabled={props.busy}
+          >
+            <SelectTrigger className="h-7 w-28 border-0 bg-transparent text-xs shadow-none focus:ring-0 lg:w-36" aria-label="Language">
+              <SelectValue placeholder="Language">
+                {getLocaleFlag(props.locale)} {getLocaleLabel(props.locale)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="max-h-72">
+              {props.locales.map((l) => (
+                <SelectItem key={l} value={l}>
+                  {getLocaleFlag(l)} {getLocaleLabel(l)}
+                </SelectItem>
+              ))}
+              <SelectSeparator />
+              <SelectItem value={ADD_LOCALE_VALUE}>
+                <span className="flex items-center gap-1.5">
+                  <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                  Add more locales…
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <span className="sr-only" role="status">
@@ -238,6 +260,17 @@ export function Toolbar(props: Props) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
+            {props.onShowOnboarding ? (
+              <>
+                <DropdownMenuItem onSelect={() => props.onShowOnboarding?.()}>
+                  <span className="flex w-full items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                    Show welcome…
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
             <DropdownMenuItem onSelect={() => props.onOpenTranslate()} disabled={props.busy}>
               <span className="flex w-full items-center gap-2">
                 <Languages className="h-3.5 w-3.5 text-muted-foreground" />
@@ -287,15 +320,19 @@ export function Toolbar(props: Props) {
             Stop
           </Button>
         ) : (
-          <Button
-            onClick={props.onExport}
-            size="sm"
-            className="h-9 gap-1.5 px-4"
-            title={`Export ${deviceLabel} App Store screenshot bundle as zip (Cmd/Ctrl+E)`}
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
+          <>
+            <Separator orientation="vertical" className="h-5" />
+            <Button
+              onClick={props.onExport}
+              variant="ghost"
+              size="sm"
+              className="h-9 gap-1.5 px-3 text-xs font-medium"
+              title={`Export ${deviceLabel} App Store screenshot bundle as zip (Cmd/Ctrl+E)`}
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+          </>
         )}
       </div>
 

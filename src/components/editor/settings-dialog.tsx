@@ -14,13 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   activeProvider,
@@ -44,6 +37,8 @@ type Props = {
   onRemoveLocale: (locale: string) => void;
   onHeadlineFontChange: (family: string) => void;
   onLabelFontChange: (family: string) => void;
+  onSelectLocale: (locale: string) => void;
+  initialTab?: string;
 };
 
 export function SettingsDialog({
@@ -58,9 +53,18 @@ export function SettingsDialog({
   onRemoveLocale,
   onHeadlineFontChange,
   onLabelFontChange,
+  onSelectLocale,
+  initialTab,
 }: Props) {
   const { settings, setSettings, patchProvider, addProvider, removeProvider } =
     useAppSettings();
+  // Controlled tab so callers (e.g. the toolbar locale menu) can open the
+  // dialog directly on a specific tab. Synced on open only, so tab switches
+  // inside an open dialog are never overridden.
+  const [tab, setTab] = React.useState(initialTab ?? "providers");
+  React.useEffect(() => {
+    if (open && initialTab) setTab(initialTab);
+  }, [open, initialTab]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,7 +75,7 @@ export function SettingsDialog({
             Providers, model, fonts, and project languages. API keys stay in this browser only.
           </DialogDescription>
         </DialogHeader>
-        <Tabs defaultValue="providers" className="flex min-h-0 flex-1 flex-col">
+        <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 border-b px-6 pt-3">
             <TabsList className="h-8">
               <TabsTrigger value="providers" className="gap-1.5 text-xs">
@@ -130,6 +134,10 @@ export function SettingsDialog({
                 disabled={disabled}
                 onAdd={onAddLocale}
                 onRemove={onRemoveLocale}
+                onSelect={(locale) => {
+                  onSelectLocale(locale);
+                  onOpenChange(false);
+                }}
               />
             </TabsContent>
           </div>
@@ -433,18 +441,19 @@ function LocalesTab({
   disabled,
   onAdd,
   onRemove,
+  onSelect,
 }: {
   locales: string[];
   currentLocale: string;
   disabled?: boolean;
   onAdd: (locale: string) => void;
   onRemove: (locale: string) => void;
+  onSelect: (locale: string) => void;
 }) {
   const available = React.useMemo(
     () => Object.keys(LOCALE_NAMES).filter((l) => !locales.includes(l)).sort(),
     [locales],
   );
-  const [pending, setPending] = React.useState<string>("");
   const [query, setQuery] = React.useState<string>("");
   const filteredAvailable = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -453,9 +462,6 @@ function LocalesTab({
       `${l} ${getLocaleLabel(l)}`.toLowerCase().includes(q),
     );
   }, [available, query]);
-  React.useEffect(() => {
-    if (pending && !available.includes(pending)) setPending("");
-  }, [pending, available]);
 
   return (
     <div className="space-y-4">
@@ -464,26 +470,35 @@ function LocalesTab({
           {locales.map((loc) => (
             <span
               key={loc}
-              className="flex items-center gap-1.5 rounded-md border bg-card px-2 py-1 text-xs"
+              className="flex items-center gap-1 rounded-md border bg-card py-1 pl-1 pr-1.5 text-xs"
             >
-              <span>
-                {getLocaleFlag(loc)} {getLocaleLabel(loc)}
-              </span>
-              <span className="font-mono text-[10px] uppercase text-muted-foreground">({loc})</span>
-              {loc === currentLocale && (
-                <Badge variant="secondary" className="px-1 py-0 text-[9px]">
-                  editing
-                </Badge>
-              )}
-              {loc === "en" && (
-                <Badge variant="outline" className="px-1 py-0 text-[9px]">
-                  source
-                </Badge>
-              )}
+              <button
+                type="button"
+                className="flex min-h-7 items-center gap-1.5 rounded px-1 hover:bg-muted/60 disabled:cursor-default disabled:hover:bg-transparent"
+                onClick={() => onSelect(loc)}
+                disabled={disabled || loc === currentLocale}
+                title={loc === currentLocale ? `Editing ${loc}` : `Switch editing to ${loc}`}
+                aria-label={loc === currentLocale ? `${loc}, currently editing` : `Switch editing to ${loc}`}
+              >
+                <span>
+                  {getLocaleFlag(loc)} {getLocaleLabel(loc)}
+                </span>
+                <span className="font-mono text-[10px] uppercase text-muted-foreground">({loc})</span>
+                {loc === currentLocale && (
+                  <Badge variant="secondary" className="px-1 py-0 text-[9px]">
+                    editing
+                  </Badge>
+                )}
+                {loc === "en" && (
+                  <Badge variant="outline" className="px-1 py-0 text-[9px]">
+                    source
+                  </Badge>
+                )}
+              </button>
               {locales.length > 1 && (
                 <button
                   type="button"
-                  className="text-muted-foreground hover:text-destructive disabled:opacity-40"
+                  className="rounded p-1 text-muted-foreground hover:text-destructive disabled:opacity-40"
                   onClick={() => {
                     onRemove(loc);
                     toast(`Removed ${loc} from editor`, {
@@ -518,7 +533,6 @@ function LocalesTab({
               disabled={disabled || available.length === 0}
               onClick={() => {
                 for (const l of available) onAdd(l);
-                setPending("");
                 setQuery("");
               }}
             >
@@ -552,45 +566,52 @@ function LocalesTab({
             </Button>
           </div>
         </div>
-        {available.length > 0 && (
+        {available.length > 0 ? (
           <>
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search locales…"
-            aria-label="Search locales"
-            className="h-8 text-xs"
-            disabled={disabled}
-          />
-          <div className="flex gap-2">
-            <Select value={pending} onValueChange={setPending} disabled={disabled}>
-              <SelectTrigger className="h-8 flex-1 text-xs" aria-label="Add language">
-                <SelectValue placeholder="Add a language…" />
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search locales…"
+              aria-label="Search locales"
+              className="h-9 text-xs"
+              disabled={disabled}
+            />
+            {filteredAvailable.length > 0 ? (
+              <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-md border p-1">
                 {filteredAvailable.map((l) => (
-                  <SelectItem key={l} value={l}>
-                    {getLocaleFlag(l)} {getLocaleLabel(l)} ({l})
-                  </SelectItem>
+                  <button
+                    type="button"
+                    key={l}
+                    className="flex h-9 w-full items-center gap-2 rounded px-2 text-left text-xs hover:bg-muted/60 disabled:opacity-40"
+                    onClick={() => {
+                      onAdd(l);
+                      toast(`Added ${l} to editor`, {
+                        action: {
+                          label: "Undo",
+                          onClick: () => onRemove(l),
+                        },
+                        duration: 6000,
+                      });
+                    }}
+                    disabled={disabled}
+                    title={`Add ${getLocaleLabel(l)} (${l})`}
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {getLocaleFlag(l)} {getLocaleLabel(l)}{" "}
+                      <span className="font-mono text-[10px] text-muted-foreground">({l})</span>
+                    </span>
+                    <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              size="sm"
-              className="h-8 gap-1 text-xs"
-              disabled={!pending || disabled}
-              onClick={() => {
-                if (pending) {
-                  onAdd(pending);
-                  setPending("");
-                }
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" /> Add
-            </Button>
-          </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No locales match “{query.trim()}”.</p>
+            )}
           </>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            All {Object.keys(LOCALE_NAMES).length} supported locales are in your project.
+          </p>
         )}
         <p className="text-[11px] text-muted-foreground">
           Removing a language keeps its saved texts in the project file but hides it from the

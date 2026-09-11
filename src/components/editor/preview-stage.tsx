@@ -1,7 +1,6 @@
 "use client";
 import * as React from "react";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DEVICE_LABEL, LAYOUT_LABEL } from "@/lib/constants";
 import type {
@@ -13,7 +12,7 @@ import type {
   Slide,
   Theme,
 } from "@/lib/types";
-import { DeckCanvas, getCanvas } from "./slide-canvas";
+import { DeckCanvas, ISOLATED_SCREEN_GAP, getCanvas } from "./slide-canvas";
 
 const ZOOM_KEY = "screenshots.zoom";
 
@@ -73,7 +72,10 @@ export function PreviewStage({
   const [fitScale, setFitScale] = React.useState(0.2);
   const [zoom, setZoom] = React.useState(() => loadZoom(device));
   const { cW, cH } = getCanvas(device);
-  const totalW = Math.max(1, slides.length) * cW;
+  // Isolated screens get breathing room between pages; connected decks stay
+  // seamless because they render and export as one strip.
+  const gap = connectedCanvas ? 0 : ISOLATED_SCREEN_GAP;
+  const totalW = Math.max(1, slides.length) * cW + Math.max(0, slides.length - 1) * gap;
   const scale = fitScale * zoom;
   const activeIndex = Math.max(0, slides.findIndex((slide) => slide.id === activeSlideId));
   const activeSlide = slides[activeIndex] || slides[0] || null;
@@ -114,7 +116,7 @@ export function PreviewStage({
 
     const scroller = scrollerRef.current;
     if (!scroller || !activeSlide) return;
-    const screenLeft = activeIndex * cW * scale;
+    const screenLeft = activeIndex * (cW + gap) * scale;
     const screenWidth = cW * scale;
     const targetLeft = Math.max(0, screenLeft - (scroller.clientWidth - screenWidth) / 2);
     const smooth =
@@ -122,7 +124,7 @@ export function PreviewStage({
       window.matchMedia &&
       !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     scroller.scrollTo({ left: targetLeft, behavior: smooth ? "smooth" : "auto" });
-  }, [activeIndex, activeSlide, cW, scale]);
+  }, [activeIndex, activeSlide, cW, gap, scale]);
 
   const handleCanvasActiveSlideChange = React.useCallback(
     (id: string) => {
@@ -175,11 +177,6 @@ export function PreviewStage({
             <span className="shrink-0 tabular-nums">Screen {activeIndex + 1} of {slides.length}</span>
             <span aria-hidden className="hidden shrink-0 text-border sm:inline">|</span>
             <span className="hidden min-w-0 truncate sm:inline">{LAYOUT_LABEL[activeSlide.layout]}</span>
-            {!connectedCanvas && (
-              <Badge variant="outline" className="hidden shrink-0 text-[10px] font-normal md:inline-flex">
-                isolated
-              </Badge>
-            )}
           </>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
@@ -247,6 +244,7 @@ export function PreviewStage({
               theme={theme}
               locale={locale}
               connectedCanvas={connectedCanvas}
+              gap={gap}
               editable
               previewScale={scale}
               selectedElement={selectedElement}

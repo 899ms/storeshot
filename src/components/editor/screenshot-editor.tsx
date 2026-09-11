@@ -8,7 +8,7 @@ import {
   hasTheme,
   themeById,
 } from "@/lib/constants";
-import { detectPlatform, newSlide, nid } from "@/lib/defaults";
+import { detectPlatform, makeStarterSlides, newSlide, nid } from "@/lib/defaults";
 import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/elements";
 import { preloadImages } from "@/lib/image-cache";
 import { exportFolderForLocale, resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
@@ -63,6 +63,9 @@ const ErrorLogDialog = dynamic(() =>
 const ExportDialog = dynamic(() =>
   import("./export-dialog").then((m) => m.ExportDialog),
 );
+const OnboardingDialog = dynamic(() =>
+  import("./onboarding-wizard").then((m) => m.OnboardingDialog),
+);
 import {
   type ExportConfig,
   type ExportTarget,
@@ -77,6 +80,12 @@ import {
   reportExportProgress,
   stoppedExportMessage,
 } from "@/lib/export-notify";
+import { slideFontFamilies } from "@/lib/caption-style";
+import {
+  buildSampleDeck,
+  hasSeenOnboarding,
+  isUntouchedDeck,
+} from "@/lib/onboarding";
 
 export function ScreenshotEditor() {
   const workspace = useActiveWorkspace();
@@ -90,7 +99,9 @@ export function ScreenshotEditor() {
   const [selectedElement, setSelectedElement] = React.useState<SelectedElement | null>(null);
   const [exporting, setExporting] = React.useState<string | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
+  const [onboardingOpen, setOnboardingOpen] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [settingsTab, setSettingsTab] = React.useState<string | undefined>(undefined);
   const [translateOpen, setTranslateOpen] = React.useState(false);
   const [ready, setReady] = React.useState(false);
   const [translatingLocale, setTranslatingLocale] = React.useState(false);
@@ -119,6 +130,36 @@ export function ScreenshotEditor() {
   React.useEffect(() => {
     decksRef.current = state.slidesByDevice;
   });
+
+  // First-run onboarding: once per mount, after hydration. The untouched-deck
+  // guard keeps returning users with real content from ever being interrupted
+  // (e.g. cleared storage); the wizard itself renders above the workspace
+  // gate when no folder is picked yet.
+  const onboardingCheckedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!hydrated || !ready || onboardingCheckedRef.current) return;
+    onboardingCheckedRef.current = true;
+    if (!hasSeenOnboarding() && isUntouchedDeck(currentSlides, state.appIcon)) {
+      setOnboardingOpen(true);
+    }
+  }, [hydrated, ready, currentSlides, state.appIcon]);
+
+  // Fill the current deck with bundled sample screenshots. When the deck is
+  // empty (e.g. a brand-new workspace folder), start from starter slides so
+  // there is something to fill. One setState = one undo step.
+  const applySampleDeck = React.useCallback(() => {
+    setState((prev) => {
+      const deck = prev.slidesByDevice[prev.device] || [];
+      const base = deck.length > 0 ? deck : makeStarterSlides(prev.device);
+      return {
+        ...prev,
+        slidesByDevice: {
+          ...prev.slidesByDevice,
+          [prev.device]: buildSampleDeck(base),
+        },
+      };
+    });
+  }, [setState]);
 
   // Translate every screen of the current device deck into the currently
   // selected locale. Single setState so the run is one undo step.
@@ -816,7 +857,12 @@ export function ScreenshotEditor() {
 
     // Make sure custom fonts are loaded before snapshot so typography in PNG
     // matches what's on screen. Bounded so offline exports can't hang.
-    await ensureFontsLoaded([state.headlineFont, state.labelFont]);
+    // Includes per-screen caption/overlay families, not just project fonts.
+    await ensureFontsLoaded([
+      state.headlineFont,
+      state.labelFont,
+      ...new Set(selectedSlides.flatMap((s) => slideFontFamilies(s))),
+    ]);
     await fontsReadyWithTimeout();
 
     const { cW, cH } = getCanvas(state.device);
@@ -1048,7 +1094,11 @@ export function ScreenshotEditor() {
     await preloadImages(singlePaths, { retryFailed: true });
     await waitForPaint();
 
-    await ensureFontsLoaded([state.headlineFont, state.labelFont]);
+    await ensureFontsLoaded([
+      state.headlineFont,
+      state.labelFont,
+      ...slideFontFamilies(activeSlide),
+    ]);
     await fontsReadyWithTimeout();
 
     const { cW, cH } = getCanvas(state.device);
@@ -1219,7 +1269,12 @@ export function ScreenshotEditor() {
         setDevice={(v) => setState((p) => ({ ...p, device: v }))}
         onExport={() => setExportDialogOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenLocales={() => {
+          setSettingsTab("locales");
+          setSettingsOpen(true);
+        }}
         onOpenTranslate={() => setTranslateOpen(true)}
+        onShowOnboarding={() => setOnboardingOpen(true)}
         onStopExport={stopExport}
         translatableCount={translatableCount}
         translatingLocale={translatingLocale}
@@ -1247,12 +1302,16 @@ export function ScreenshotEditor() {
 
       <SettingsDialog
         open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+        onOpenChange={(o) => {
+          setSettingsOpen(o);
+          if (!o) setSettingsTab(undefined);
+        }}
         locales={state.locales}
         currentLocale={state.locale}
         headlineFont={state.headlineFont}
         labelFont={state.labelFont}
         disabled={busy}
+        initialTab={settingsTab}
         onAddLocale={(locale) =>
           setState((prev) =>
             prev.locales.includes(locale)
@@ -1273,6 +1332,7 @@ export function ScreenshotEditor() {
         }
         onHeadlineFontChange={(family) => setState((p) => ({ ...p, headlineFont: family }))}
         onLabelFontChange={(family) => setState((p) => ({ ...p, labelFont: family }))}
+        onSelectLocale={(locale) => setState((p) => ({ ...p, locale }))}
       />
 
       <TranslateDialog
@@ -1320,6 +1380,12 @@ export function ScreenshotEditor() {
         onStartExport={exportWithConfig}
         exporting={exporting}
         workspace={workspace}
+      />
+
+      <OnboardingDialog
+        open={onboardingOpen}
+        onOpenChange={setOnboardingOpen}
+        onApplySamples={applySampleDeck}
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden md:flex-row flex-col">
@@ -1408,8 +1474,12 @@ export function ScreenshotEditor() {
             <Inspector
               slide={activeSlide}
               device={state.device}
+              theme={theme}
                 locale={state.locale}
               locales={state.locales}
+              exportLabel={`Export screen ${currentSlides.findIndex((s) => s.id === activeSlide.id) + 1} · ${state.locale.toUpperCase()}`}
+              headlineFont={state.headlineFont}
+              labelFont={state.labelFont}
               selectedElementId={
                 selectedElement?.slideId === activeSlide.id ? selectedElement.elementId : null
               }

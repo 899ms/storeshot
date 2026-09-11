@@ -56,8 +56,22 @@ export type TextElement = {
   transform: ElementTransform;
   fontSize?: number;
   fontWeight?: number;
+  /** Google Fonts family name. Absent = project default. */
+  fontFamily?: string;
   color?: string;
   align?: "left" | "center" | "right";
+};
+
+// Per-slide typographic overrides for the built-in caption (label +
+// headline). Every field is optional; the renderer falls back to the
+// long-standing hardcoded values so pre-existing projects render
+// pixel-identically. Locale-independent, like all other style data.
+export type CaptionTextStyle = {
+  fontSize?: number;
+  fontWeight?: number;
+  /** Google Fonts family name. Absent = project default. */
+  fontFamily?: string;
+  color?: string;
 };
 
 export type Slide = {
@@ -65,6 +79,8 @@ export type Slide = {
   layout: SlideLayout;
   label: LocalizedText;       // tiny uppercase caption above headline, per locale
   headline: LocalizedText;    // multi-line; newlines are intentional, per locale
+  labelStyle?: CaptionTextStyle;    // typographic overrides; absent = defaults
+  headlineStyle?: CaptionTextStyle; // typographic overrides; absent = defaults
   screenshot: string;         // workspace-relative path (e.g. uploads/a.png) or absolute /… — may contain {locale}
   screenshotSecondary?: string; // for two-devices layout — may contain {locale}
   inverted?: boolean;         // dark background variant

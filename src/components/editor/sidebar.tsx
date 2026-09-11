@@ -15,7 +15,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { ImagePlus, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { Device, ScreenBackground, Slide, Theme } from "@/lib/types";
@@ -136,27 +136,16 @@ export function Sidebar({
         </DndContext>
       </div>
 
-      <div className="border-t bg-background p-2.5 flex gap-2">
+      <div className="border-t bg-background p-2.5">
         <Button
           type="button"
-          className="h-9 flex-1"
+          className="h-9 w-full"
           variant="default"
           onClick={() => onAdd(newSlide("device-bottom"))}
           disabled={disabled}
+          title="For a full-bleed image screen, add a screen then switch its Layout to Static image"
         >
           <Plus className="h-4 w-4" /> Add screen
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-9 w-9 shrink-0"
-          onClick={() => onAdd(newSlide("static"))}
-          disabled={disabled}
-          title="Add a static full-bleed image screen (overlay texts allowed)"
-          aria-label="Add static screen"
-        >
-          <ImagePlus className="h-4 w-4" />
         </Button>
       </div>
     </div>

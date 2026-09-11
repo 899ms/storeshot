@@ -34,7 +34,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { activeProvider, useAppSettings } from "@/lib/app-settings";
 import { LAYOUT_HINT, LAYOUT_LABEL } from "@/lib/constants";
-import { nid } from "@/lib/defaults";
+import { DEFAULT_HEADLINE_FONT, DEFAULT_LABEL_FONT, nid } from "@/lib/defaults";
+import { CURATED_FONTS, curatedWeights, ensureFontLoaded } from "@/lib/fonts";
+import {
+  DEFAULT_HEADLINE_SIZE_FACTOR,
+  DEFAULT_HEADLINE_WEIGHT,
+  DEFAULT_LABEL_SIZE_FACTOR,
+  DEFAULT_LABEL_WEIGHT,
+  patchCaptionStyle,
+} from "@/lib/caption-style";
 import {
   isBuiltInElementId,
   isTextElementId,
@@ -50,12 +58,14 @@ import {
 } from "@/lib/translate";
 import type {
   BuiltInElementId,
+  CaptionTextStyle,
   Device,
   ElementId,
   ElementTransform,
   Slide,
   SlideLayout,
   TextElement,
+  Theme,
 } from "@/lib/types";
 import { ScreenshotPicker } from "./screenshot-picker";
 import { BackgroundEditor } from "./background-controls";
@@ -64,11 +74,15 @@ import { getCanvas, getElementTransform } from "./slide-canvas";
 type Props = {
   slide: Slide;
   device: Device;
+  theme: Theme;
   locale: string;
   locales: string[];
   selectedElementId: ElementId | null;
   disabled?: boolean;
+  headlineFont?: string;
+  labelFont?: string;
   onExportSlide?: () => void;
+  exportLabel?: string;
   onChange: (patch: Partial<Slide>) => void;
   onSelectElement: (id: ElementId | null) => void;
 };
@@ -82,11 +96,15 @@ const ELEMENT_LABEL: Record<BuiltInElementId, string> = {
 export function Inspector({
   slide,
   device,
+  theme,
   locale,
   locales,
   selectedElementId,
   disabled,
+  headlineFont,
+  labelFont,
   onExportSlide,
+  exportLabel,
   onChange,
   onSelectElement,
 }: Props) {
@@ -111,38 +129,16 @@ export function Inspector({
   return (
     <div className="flex h-full flex-col">
       <div className="border-b p-3 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold">Screen settings</h2>
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">
-              <span>editing</span>
-              <span>·</span>
-              <span className="font-medium text-foreground">{locale.toUpperCase()}</span>
-            </div>
-          </div>
-          {onExportSlide && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 shrink-0 gap-1.5 px-2.5 text-xs font-medium"
-              onClick={onExportSlide}
-              disabled={disabled}
-              title={`Export only this screen (${locale.toUpperCase()})`}
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export
-            </Button>
-          )}
-        </div>
+        <h2 className="text-sm font-semibold">Screen settings</h2>
         <p className="text-xs text-muted-foreground">{LAYOUT_HINT[layoutValue]}</p>
       </div>
 
       <Tabs defaultValue="content" className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 border-b px-3 pt-2">
+        <div className="shrink-0 px-3 pt-2">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="content" className="text-xs">Content</TabsTrigger>
             <TabsTrigger value="design" className="text-xs">Design</TabsTrigger>
-            <TabsTrigger value="arrange" className="text-xs">Arrange</TabsTrigger>
+            <TabsTrigger value="layers" className="text-xs">Layers</TabsTrigger>
           </TabsList>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -256,19 +252,35 @@ export function Inspector({
               onChange={(background) => onChange({ background })}
             />
           </TabsContent>
-          <TabsContent value="arrange" className="mt-0 space-y-4">
+          <TabsContent value="layers" className="mt-0 space-y-4">
             <ElementTransformControls
               slide={slide}
               device={device}
+              theme={theme}
               locale={locale}
               selectedElementId={selectedElementId}
               textOnly={isStatic}
+              headlineFont={headlineFont}
+              labelFont={labelFont}
               onChange={onChange}
               onSelectElement={onSelectElement}
             />
           </TabsContent>
         </div>
       </Tabs>
+      {onExportSlide && (
+        <div className="shrink-0 border-t bg-background p-3">
+          <Button
+            className="h-9 w-full gap-1.5 text-xs font-medium"
+            onClick={onExportSlide}
+            disabled={disabled}
+            title={`Export only this screen (${locale.toUpperCase()})`}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {exportLabel ?? "Export screen"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -404,18 +416,24 @@ function ScreenTranslate({
 function ElementTransformControls({
   slide,
   device,
+  theme,
   locale,
   selectedElementId,
   textOnly,
+  headlineFont,
+  labelFont,
   onChange,
   onSelectElement,
 }: {
   slide: Slide;
   device: Device;
+  theme: Theme;
   locale: string;
   selectedElementId: ElementId | null;
   // Static screens expose overlay texts only — no caption/device rows.
   textOnly?: boolean;
+  headlineFont?: string;
+  labelFont?: string;
   onChange: (patch: Partial<Slide>) => void;
   onSelectElement: (id: ElementId | null) => void;
 }) {
@@ -544,11 +562,13 @@ function ElementTransformControls({
     onChange({ transforms: nextTransforms, textElements: nextTextElements });
   }
 
+  const overlayDefaultColor = slide.inverted ? theme.fgAlt : theme.fg;
+
   return (
     <Card className="space-y-3 bg-muted/30 p-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <Label className="text-xs font-semibold">Elements</Label>
+          <Label className="text-xs font-semibold">Layers</Label>
           <p className="text-[11px] text-muted-foreground">
             {activeId
               ? "Fine-tune the selected element's geometry, rotation, and stacking — or focus it on the canvas and use arrow keys."
@@ -567,12 +587,25 @@ function ElementTransformControls({
         </Button>
       </div>
 
+      {activeId === "caption" && !textOnly ? (
+        <CaptionTypographyPanel
+          slide={slide}
+          device={device}
+          theme={theme}
+          headlineFont={headlineFont || DEFAULT_HEADLINE_FONT}
+          labelFont={labelFont || DEFAULT_LABEL_FONT}
+          onChange={onChange}
+        />
+      ) : null}
+
       {activeId ? (
         <ActiveElementPanel
           activeId={activeId}
           transform={activeTransform}
           textElement={activeTextElement || undefined}
           locale={locale}
+          labelFont={labelFont || DEFAULT_LABEL_FONT}
+          textDefaultColor={overlayDefaultColor}
           onRotate={(rotation) => patchElement(activeId, { rotation })}
           onRect={(patch) => patchElement(activeId, patch)}
           onReorder={(dir) => reorder(activeId, dir)}
@@ -595,11 +628,197 @@ function ElementTransformControls({
   );
 }
 
+// Typography controls for the built-in caption (label + headline), shown
+// when the caption element is selected. Every field is an override; clearing
+// it falls back to the project default.
+function CaptionTypographyPanel({
+  slide,
+  device,
+  theme,
+  headlineFont,
+  labelFont,
+  onChange,
+}: {
+  slide: Slide;
+  device: Device;
+  theme: Theme;
+  headlineFont: string;
+  labelFont: string;
+  onChange: (patch: Partial<Slide>) => void;
+}) {
+  const { cW, cH } = getCanvas(device);
+  const unit = Math.min(cW, cH);
+  const fg = slide.inverted ? theme.fgAlt : theme.fg;
+  const hasOverrides = slide.labelStyle !== undefined || slide.headlineStyle !== undefined;
+
+  function patch(key: "labelStyle" | "headlineStyle", p: Partial<CaptionTextStyle>) {
+    onChange({ [key]: patchCaptionStyle(slide[key], p) } as Partial<Slide>);
+  }
+
+  return (
+    <div className="space-y-3 rounded border bg-background/60 p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1 text-xs font-medium">
+          <Type className="h-3.5 w-3.5" />
+          Caption type
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-[11px] text-muted-foreground"
+          disabled={!hasOverrides}
+          onClick={() => onChange({ labelStyle: undefined, headlineStyle: undefined })}
+          title="Clear overrides, back to project defaults"
+        >
+          Reset
+        </Button>
+      </div>
+      <CaptionStyleFields
+        title="Label"
+        style={slide.labelStyle}
+        defaultSize={Math.round(unit * DEFAULT_LABEL_SIZE_FACTOR)}
+        defaultWeight={DEFAULT_LABEL_WEIGHT}
+        defaultFamily={labelFont}
+        defaultColor={theme.accent}
+        onPatch={(p) => patch("labelStyle", p)}
+      />
+      <CaptionStyleFields
+        title="Headline"
+        style={slide.headlineStyle}
+        defaultSize={Math.round(unit * DEFAULT_HEADLINE_SIZE_FACTOR)}
+        defaultWeight={DEFAULT_HEADLINE_WEIGHT}
+        defaultFamily={headlineFont}
+        defaultColor={fg}
+        onPatch={(p) => patch("headlineStyle", p)}
+      />
+    </div>
+  );
+}
+
+function CaptionStyleFields({
+  title,
+  style,
+  defaultSize,
+  defaultWeight,
+  defaultFamily,
+  defaultColor,
+  onPatch,
+}: {
+  title: string;
+  style: CaptionTextStyle | undefined;
+  defaultSize: number;
+  defaultWeight: number;
+  defaultFamily: string;
+  defaultColor: string;
+  onPatch: (patch: Partial<CaptionTextStyle>) => void;
+}) {
+  const family = style?.fontFamily ?? defaultFamily;
+  const weights = curatedWeights(family);
+  const weight =
+    style?.fontWeight !== undefined && weights.includes(style.fontWeight)
+      ? style.fontWeight
+      : weights.includes(defaultWeight)
+        ? defaultWeight
+        : (weights[0] ?? defaultWeight);
+  return (
+    <div className="space-y-2 rounded border bg-muted/30 p-2">
+      <p className="text-[11px] font-semibold text-muted-foreground">{title}</p>
+      <div className="grid grid-cols-[1fr_76px] gap-2">
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Size (px)</Label>
+          <Input
+            type="number"
+            min={1}
+            value={style?.fontSize === undefined ? "" : Math.round(style.fontSize)}
+            placeholder={String(defaultSize)}
+            className="h-8 text-xs tabular-nums"
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "") return onPatch({ fontSize: undefined });
+              const n = Number(v);
+              if (Number.isFinite(n)) onPatch({ fontSize: Math.max(1, n) });
+            }}
+            aria-label={`${title} size`}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Color</Label>
+          <Input
+            type="color"
+            value={style?.color || defaultColor}
+            className="h-8 p-1"
+            onChange={(e) => onPatch({ color: e.target.value })}
+            aria-label={`${title} color`}
+          />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">Font</Label>
+        <Select
+          value={style?.fontFamily ?? "__default__"}
+          onValueChange={(v) => {
+            if (v !== "__default__") void ensureFontLoaded(v);
+            onPatch(
+              v === "__default__"
+                ? { fontFamily: undefined, fontWeight: undefined }
+                : {
+                    fontFamily: v,
+                    fontWeight: snapWeight(v, style?.fontWeight, defaultWeight),
+                  },
+            );
+          }}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__default__">Default ({defaultFamily})</SelectItem>
+            {CURATED_FONTS.map((f) => (
+              <SelectItem key={f.family} value={f.family}>
+                {f.family}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">Weight</Label>
+        <Select
+          value={String(weight)}
+          onValueChange={(v) => onPatch({ fontWeight: Number(v) })}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {weights.map((w) => (
+              <SelectItem key={w} value={String(w)}>
+                {w}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+// Snap a weight onto a family's available weights when the family changes.
+function snapWeight(family: string, weight: number | undefined, fallback: number): number {
+  const weights = curatedWeights(family);
+  if (weight !== undefined && weights.includes(weight)) return weight;
+  if (weights.includes(fallback)) return fallback;
+  return weights[0] ?? fallback;
+}
+
 function ActiveElementPanel({
   activeId,
   transform,
   textElement,
   locale,
+  labelFont,
+  textDefaultColor,
   onRotate,
   onRect,
   onReorder,
@@ -611,6 +830,8 @@ function ActiveElementPanel({
   transform: ElementTransform | undefined;
   textElement?: TextElement;
   locale: string;
+  labelFont: string;
+  textDefaultColor: string;
   onRotate: (rotation: number) => void;
   onRect: (patch: Partial<ElementTransform>) => void;
   onReorder: (dir: "front" | "back" | "up" | "down") => void;
@@ -649,6 +870,8 @@ function ActiveElementPanel({
         <TextElementPanel
           element={textElement}
           locale={locale}
+          defaultFamily={labelFont}
+          defaultColor={textDefaultColor}
           onTextChange={onTextChange}
           onTextPatch={onTextPatch}
         />
@@ -738,15 +961,27 @@ function ActiveElementPanel({
 function TextElementPanel({
   element,
   locale,
+  defaultFamily,
+  defaultColor,
   onTextChange,
   onTextPatch,
 }: {
   element: TextElement;
   locale: string;
+  defaultFamily: string;
+  defaultColor: string;
   onTextChange: (value: string) => void;
   onTextPatch: (patch: Partial<TextElement>) => void;
 }) {
   const text = element.text?.[locale] ?? pickText(element.text, locale);
+  const family = element.fontFamily ?? defaultFamily;
+  const familyWeights = curatedWeights(family);
+  const elementWeight =
+    element.fontWeight !== undefined && familyWeights.includes(element.fontWeight)
+      ? element.fontWeight
+      : familyWeights.includes(700)
+        ? 700
+        : (familyWeights[0] ?? 700);
   return (
     <div className="space-y-2 rounded border bg-muted/30 p-2">
       <div className="space-y-1">
@@ -774,10 +1009,59 @@ function TextElementPanel({
           <Label className="text-[11px] text-muted-foreground">Color</Label>
           <Input
             type="color"
-            value={element.color || "#171717"}
+            value={element.color || defaultColor}
             className="h-9 p-1"
             onChange={(event) => onTextPatch({ color: event.target.value })}
           />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Font</Label>
+          <Select
+            value={element.fontFamily ?? "__default__"}
+            onValueChange={(v) => {
+              if (v !== "__default__") void ensureFontLoaded(v);
+              onTextPatch(
+                v === "__default__"
+                  ? { fontFamily: undefined, fontWeight: undefined }
+                  : {
+                      fontFamily: v,
+                      fontWeight: snapWeight(v, element.fontWeight, 700),
+                    },
+              );
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__default__">Default</SelectItem>
+              {CURATED_FONTS.map((f) => (
+                <SelectItem key={f.family} value={f.family}>
+                  {f.family}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Weight</Label>
+          <Select
+            value={String(elementWeight)}
+            onValueChange={(v) => onTextPatch({ fontWeight: Number(v) })}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {familyWeights.map((w) => (
+                <SelectItem key={w} value={String(w)}>
+                  {w}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-1">
