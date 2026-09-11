@@ -18,7 +18,7 @@ import {
 import { Plus, Type, Smartphone, Heading } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { Device, ElementId, ScreenBackground, Slide, Theme } from "@/lib/types";
+import type { CanvasSize, Device, ElementId, FrameFinish, GlobalTextStyle, ScreenBackground, Slide, Theme } from "@/lib/types";
 import { newSlide } from "@/lib/defaults";
 import { getScreenLayers } from "@/lib/screen-layers";
 import { useActiveWorkspace } from "@/lib/workspaces";
@@ -36,6 +36,10 @@ type Props = {
   headlineFont?: string;
   labelFont?: string;
   background?: ScreenBackground;
+  sizes?: Partial<Record<Device, CanvasSize>>;
+  frames?: Partial<Record<"phone" | "tablet", FrameFinish>>;
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   disabled?: boolean;
   onReorder: (next: Slide[]) => void;
   onSelect: (id: string) => void;
@@ -66,6 +70,10 @@ export function Sidebar({
   headlineFont,
   labelFont,
   background,
+  sizes,
+  frames,
+  headlineText,
+  labelText,
   disabled,
   onReorder,
   onSelect,
@@ -125,19 +133,23 @@ export function Sidebar({
                 const layers = getScreenLayers(slide);
                 return (
                   <div key={slide.id}>
-                    <SlideThumb
-                      slide={slide}
-                      slides={slides}
-                      index={i}
-                      active={isActive}
-                      device={device}
-                      theme={theme}
-                      locale={locale}
-                      connectedCanvas={connectedCanvas}
-                      headlineFont={headlineFont}
-                      labelFont={labelFont}
-                      background={background}
-                      onSelect={() => onSelect(slide.id)}
+                        <SlideThumb
+                          slide={slide}
+                          slides={slides}
+                          index={i}
+                          active={isActive}
+                          device={device}
+                          theme={theme}
+                          locale={locale}
+                          connectedCanvas={connectedCanvas}
+                          headlineFont={headlineFont}
+                          labelFont={labelFont}
+                          background={background}
+                          sizes={sizes}
+                          frames={frames}
+                          headlineText={headlineText}
+                          labelText={labelText}
+                          onSelect={() => onSelect(slide.id)}
                       onDelete={() => onDelete(slide.id)}
                       onDuplicate={() => onDuplicate(slide.id)}
                     />

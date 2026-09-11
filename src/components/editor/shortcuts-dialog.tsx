@@ -18,6 +18,7 @@ const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Delete", action: "Delete Selected Text" },
   { keys: "↑ / ↓  or  K / J", action: "Previous / Next Screen" },
   { keys: "← → ↑ ↓", action: "Nudge Selected Element (Shift = Big Step)" },
+  { keys: "Shift + R", action: "Toggle Rulers" },
   { keys: "Esc", action: "Deselect Element" },
   { keys: "?", action: "Open This Help" },
 ];

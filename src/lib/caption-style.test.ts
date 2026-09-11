@@ -1,61 +1,82 @@
 import { describe, expect, it } from "vitest";
 import {
-  patchCaptionStyle,
+  DEFAULT_HEADLINE_SIZE_FACTOR,
+  DEFAULT_HEADLINE_WEIGHT,
+  DEFAULT_LABEL_SIZE_FACTOR,
+  DEFAULT_LABEL_WEIGHT,
   resolveHeadlineStyle,
   resolveLabelStyle,
-  slideFontFamilies,
 } from "./caption-style";
 
+const UNIT = 1000;
+
 describe("resolveLabelStyle", () => {
-  it("falls back to defaults when no overrides are set", () => {
-    const s = resolveLabelStyle({}, 1000, "Inter", "#abc");
-    expect(s).toEqual({ fontSize: 28, fontWeight: 600, fontFamily: "Inter", color: "#abc" });
+  it("falls back to builtins when nothing is set (pixel-identical legacy)", () => {
+    expect(resolveLabelStyle({}, UNIT, "Inter", "#accent")).toEqual({
+      fontSize: UNIT * DEFAULT_LABEL_SIZE_FACTOR,
+      fontWeight: DEFAULT_LABEL_WEIGHT,
+      fontFamily: "Inter",
+      color: "#accent",
+    });
   });
 
-  it("prefers per-slide overrides field by field", () => {
-    const s = resolveLabelStyle(
-      { labelStyle: { color: "#123", fontFamily: "Lora" } },
-      1000,
-      "Inter",
-      "#abc",
-    );
-    expect(s).toEqual({ fontSize: 28, fontWeight: 600, fontFamily: "Lora", color: "#123" });
+  it("applies globals when no per-slide override exists", () => {
+    expect(
+      resolveLabelStyle({}, UNIT, "Inter", "#accent", {
+        fontWeight: 800,
+        sizeFactor: 0.05,
+        color: "#123456",
+      }),
+    ).toEqual({ fontSize: UNIT * 0.05, fontWeight: 800, fontFamily: "Inter", color: "#123456" });
+  });
+
+  it("prefers per-slide overrides over globals", () => {
+    expect(
+      resolveLabelStyle(
+        { labelStyle: { fontSize: 42, fontWeight: 400, color: "#fff" } },
+        UNIT,
+        "Inter",
+        "#accent",
+        { fontWeight: 800, sizeFactor: 0.05, color: "#123456" },
+      ),
+    ).toEqual({ fontSize: 42, fontWeight: 400, fontFamily: "Inter", color: "#fff" });
   });
 });
 
 describe("resolveHeadlineStyle", () => {
-  it("falls back to defaults when no overrides are set", () => {
-    const s = resolveHeadlineStyle({}, 1000, "Nunito", "#def");
-    expect(s).toEqual({ fontSize: 92, fontWeight: 700, fontFamily: "Nunito", color: "#def" });
+  it("falls back to builtins when nothing is set (pixel-identical legacy)", () => {
+    expect(resolveHeadlineStyle({}, UNIT, "Nunito", "#fg")).toEqual({
+      fontSize: UNIT * DEFAULT_HEADLINE_SIZE_FACTOR,
+      fontWeight: DEFAULT_HEADLINE_WEIGHT,
+      fontFamily: "Nunito",
+      color: "#fg",
+    });
   });
 
-  it("prefers per-slide overrides field by field", () => {
-    const s = resolveHeadlineStyle(
-      { headlineStyle: { fontSize: 120, fontWeight: 900 } },
-      1000,
-      "Nunito",
-      "#def",
-    );
-    expect(s).toEqual({ fontSize: 120, fontWeight: 900, fontFamily: "Nunito", color: "#def" });
-  });
-});
-
-describe("patchCaptionStyle", () => {
-  it("merges onto the current style and clears back to undefined when empty", () => {
-    expect(patchCaptionStyle(undefined, { color: "#123" })).toEqual({ color: "#123" });
-    expect(patchCaptionStyle({ color: "#123" }, { color: undefined })).toBeUndefined();
-  });
-});
-
-describe("slideFontFamilies", () => {
-  it("collects caption + overlay families without duplicates", () => {
+  it("applies globals when no per-slide override exists", () => {
     expect(
-      slideFontFamilies({
-        labelStyle: { fontFamily: "Lora" },
-        headlineStyle: { fontFamily: "Lora" },
-        textElements: [{ id: "a", text: {}, transform: { x: 0, y: 0, width: 1, height: 1 }, fontFamily: "Oswald" }],
+      resolveHeadlineStyle({}, UNIT, "Nunito", "#fg", {
+        fontWeight: 900,
+        sizeFactor: 0.12,
+        color: "#654321",
       }),
-    ).toEqual(["Lora", "Oswald"]);
-    expect(slideFontFamilies({})).toEqual([]);
+    ).toEqual({ fontSize: UNIT * 0.12, fontWeight: 900, fontFamily: "Nunito", color: "#654321" });
+  });
+
+  it("prefers per-slide overrides over globals", () => {
+    expect(
+      resolveHeadlineStyle(
+        { headlineStyle: { fontWeight: 400 } },
+        UNIT,
+        "Nunito",
+        "#fg",
+        { fontWeight: 900, sizeFactor: 0.12, color: "#654321" },
+      ),
+    ).toEqual({
+      fontSize: UNIT * 0.12,
+      fontWeight: 400,
+      fontFamily: "Nunito",
+      color: "#654321",
+    });
   });
 });

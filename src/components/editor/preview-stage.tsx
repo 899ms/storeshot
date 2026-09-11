@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Copy, Maximize2, Type, ZoomIn, ZoomOut } from "lucide-react";
+import { Copy, Maximize2, Ruler, Type, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -12,9 +12,12 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { DEVICE_LABEL, LAYOUT_LABEL } from "@/lib/constants";
 import type {
+  CanvasSize,
   Device,
   ElementId,
   ElementTransform,
+  FrameFinish,
+  GlobalTextStyle,
   ScreenBackground,
   SelectedElement,
   Slide,
@@ -22,6 +25,10 @@ import type {
   Theme,
 } from "@/lib/types";
 import { DeckCanvas, ISOLATED_SCREEN_GAP, getCanvas } from "./slide-canvas";
+import { LeftRuler, TopRuler, loadRulers, saveRulers } from "./rulers";
+import type { RulerHandle, RulerSnapshot } from "./rulers";
+import { loadGuides, saveGuides } from "@/lib/guides";
+import type { Guide, GuideAxis } from "@/lib/guides";
 
 const ZOOM_KEY = "screenshots.zoom";
 
@@ -47,6 +54,8 @@ type Props = {
   headlineFont?: string;
   labelFont?: string;
   background?: ScreenBackground;
+  /** Active workspace id (path). Guides are stored per workspace + device. */
+  workspaceKey: string | null;
   onActiveSlideChange: (id: string) => void;
   onLabelChange: (slide: Slide, v: string) => void;
   onHeadlineChange: (slide: Slide, v: string) => void;
@@ -54,6 +63,10 @@ type Props = {
   onElementChange: (slideId: string, id: ElementId, t: ElementTransform) => void;
   onSelectElement: (element: SelectedElement | null) => void;
   onRenameScreen?: (slideId: string, name: string) => void;
+  sizes?: Partial<Record<Device, CanvasSize>>;
+  frames?: Partial<Record<"phone" | "tablet", FrameFinish>>;
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   // Figma-style floating dock (essentials v1)
   onAddText?: () => void;
   onDuplicateScreen?: () => void;
@@ -75,6 +88,7 @@ export function PreviewStage({
   headlineFont,
   labelFont,
   background,
+  workspaceKey,
   onActiveSlideChange,
   onLabelChange,
   onHeadlineChange,
@@ -82,6 +96,10 @@ export function PreviewStage({
   onElementChange,
   onSelectElement,
   onRenameScreen,
+  sizes,
+  frames,
+  headlineText,
+  labelText,
   onAddText,
   onDuplicateScreen,
   slideLayout,
@@ -90,10 +108,44 @@ export function PreviewStage({
 }: Props) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const scrollerRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const topRulerRef = React.useRef<RulerHandle>(null);
+  const leftRulerRef = React.useRef<RulerHandle>(null);
+  const rafRef = React.useRef(0);
   const suppressNextActiveScreenPanRef = React.useRef(false);
   const [fitScale, setFitScale] = React.useState(0.2);
   const [zoom, setZoom] = React.useState(() => loadZoom(device));
-  const { cW, cH } = getCanvas(device);
+  const [rulersOn, setRulersOn] = React.useState(() => loadRulers());
+  // Live ruler geometry. Mutated (never setState) so scroll/move updates stay
+  // off the render path; rulers repaint imperatively via requestAnimationFrame.
+  const snapRef = React.useRef<RulerSnapshot>({
+    scale: 0.2,
+    scrollX: 0,
+    scrollY: 0,
+    padL: 0,
+    padT: 0,
+    viewW: 0,
+    viewH: 0,
+    cursorX: null,
+    cursorY: null,
+    totalW: 0,
+    cH: 0,
+  });
+  const [guides, setGuides] = React.useState<Guide[]>(() => loadGuides(workspaceKey, device));
+  const [draggingId, setDraggingId] = React.useState<string | null>(null);
+  const dragRef = React.useRef<{
+    id: string;
+    axis: GuideAxis;
+    startX: number;
+    startY: number;
+    startPos: number;
+    created: boolean;
+    moved: boolean;
+  } | null>(null);
+  const guideIdRef = React.useRef(0);
+  const topRulerWrapRef = React.useRef<HTMLDivElement>(null);
+  const leftRulerWrapRef = React.useRef<HTMLDivElement>(null);
+  const { cW, cH } = getCanvas(device, sizes);
   // Isolated screens get breathing room between pages; connected decks stay
   // seamless because they render and export as one strip.
   const gap = connectedCanvas ? 0 : ISOLATED_SCREEN_GAP;
@@ -102,20 +154,288 @@ export function PreviewStage({
   const activeIndex = Math.max(0, slides.findIndex((slide) => slide.id === activeSlideId));
   const activeSlide = slides[activeIndex] || slides[0] || null;
 
+  const redrawRulers = React.useCallback(() => {
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      topRulerRef.current?.redraw();
+      leftRulerRef.current?.redraw();
+    });
+  }, []);
+
+  // Deck origin inside the scroller viewport, derived from live rects so it
+  // stays correct across the responsive padding (p-6/pt-12, sm:p-10/sm:pt-14).
+  const syncRulerViewport = React.useCallback(() => {
+    const sc = scrollerRef.current;
+    if (!sc) return;
+    const s = snapRef.current;
+    s.scrollX = sc.scrollLeft;
+    s.scrollY = sc.scrollTop;
+    s.viewW = sc.clientWidth;
+    s.viewH = sc.clientHeight;
+    const content = contentRef.current;
+    if (content) {
+      const scRect = sc.getBoundingClientRect();
+      const cRect = content.getBoundingClientRect();
+      s.padL = cRect.left - scRect.left + sc.scrollLeft;
+      s.padT = cRect.top - scRect.top + sc.scrollTop;
+    }
+    redrawRulers();
+  }, [redrawRulers]);
+
+  const getSnapshot = React.useCallback(() => snapRef.current, []);
+
+  const toggleRulers = React.useCallback(() => {
+    setRulersOn((prev) => {
+      const next = !prev;
+      saveRulers(next);
+      return next;
+    });
+  }, []);
+
+  const handleScrollerScroll = React.useCallback(() => {
+    syncRulerViewport();
+  }, [syncRulerViewport]);
+
+  const handleScrollerMouseMove = React.useCallback(
+    (e: React.MouseEvent) => {
+      const sc = scrollerRef.current;
+      if (!sc) return;
+      const s = snapRef.current;
+      const rect = sc.getBoundingClientRect();
+      const scale = Math.max(s.scale, 1e-6);
+      s.cursorX = (e.clientX - rect.left + s.scrollX - s.padL) / scale;
+      s.cursorY = (e.clientY - rect.top + s.scrollY - s.padT) / scale;
+      redrawRulers();
+    },
+    [redrawRulers],
+  );
+
+  const handleScrollerMouseLeave = React.useCallback(() => {
+    snapRef.current.cursorX = null;
+    snapRef.current.cursorY = null;
+    redrawRulers();
+  }, [redrawRulers]);
+
+  // Canvas-px guide position under the pointer (same origin math as rulers).
+  const guidePosFromClient = React.useCallback(
+    (clientX: number, clientY: number, axis: GuideAxis): number | null => {
+      const sc = scrollerRef.current;
+      if (!sc) return null;
+      const s = snapRef.current;
+      const rect = sc.getBoundingClientRect();
+      const scale = Math.max(s.scale, 1e-6);
+      return axis === "v"
+        ? (clientX - rect.left + s.scrollX - s.padL) / scale
+        : (clientY - rect.top + s.scrollY - s.padT) / scale;
+    },
+    [],
+  );
+
+  // Figma parity: releasing a guide over either ruler bar deletes it.
+  const pointerOverRulers = React.useCallback((clientX: number, clientY: number) => {
+    for (const bar of [topRulerWrapRef.current, leftRulerWrapRef.current]) {
+      if (!bar) continue;
+      const r = bar.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+        return true;
+      }
+    }
+    return false;
+  }, []);
+
+  const removeGuide = React.useCallback((id: string) => {
+    setGuides((prev) => prev.filter((g) => g.id !== id));
+  }, []);
+
+  const onGuidePointerDown = React.useCallback((e: React.PointerEvent, guide: Guide) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      id: guide.id,
+      axis: guide.axis,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPos: guide.pos,
+      created: false,
+      moved: false,
+    };
+    setDraggingId(guide.id);
+  }, []);
+
+  // Pull a new guide out of a ruler bar (capture keeps events flowing here).
+  const onRulerPointerDown = React.useCallback(
+    (e: React.PointerEvent, axis: GuideAxis) => {
+      if (e.button !== 0) return;
+      const pos = guidePosFromClient(e.clientX, e.clientY, axis);
+      if (pos == null || !Number.isFinite(pos)) return;
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      guideIdRef.current += 1;
+      const id = `g_${Date.now().toString(36)}_${guideIdRef.current}`;
+      setGuides((prev) => [...prev, { id, axis, pos }]);
+      dragRef.current = {
+        id,
+        axis,
+        startX: e.clientX,
+        startY: e.clientY,
+        startPos: pos,
+        created: true,
+        moved: false,
+      };
+      setDraggingId(id);
+    },
+    [guidePosFromClient],
+  );
+
+  const onGuidePointerMove = React.useCallback((e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const scale = Math.max(snapRef.current.scale, 1e-6);
+    if (Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) > 3) {
+      d.moved = true;
+    }
+    const delta =
+      d.axis === "v" ? (e.clientX - d.startX) / scale : (e.clientY - d.startY) / scale;
+    const pos = d.startPos + delta;
+    setGuides((prev) => prev.map((g) => (g.id === d.id ? { ...g, pos } : g)));
+  }, []);
+
+  const onGuidePointerUp = React.useCallback(
+    (e: React.PointerEvent) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      setDraggingId(null);
+      if (!d) return;
+      // A bare click on a ruler creates nothing; dragging back onto a ruler deletes.
+      if ((d.created && !d.moved) || pointerOverRulers(e.clientX, e.clientY)) {
+        removeGuide(d.id);
+      }
+    },
+    [pointerOverRulers, removeGuide],
+  );
+
+  const onGuideDoubleClick = React.useCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      removeGuide(id);
+    },
+    [removeGuide],
+  );
+
+  // An interrupted drag (touch scroll takeover, alert, window blur) must never
+  // wedge the drag state — that would block all persistence saves, which skip
+  // while a drag is active. Commit the last position and resume saving.
+  const onGuidePointerCancel = React.useCallback(() => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDraggingId(null);
+    if (!d) return;
+    // A pull that never left the ruler leaves no trace.
+    if (d.created && !d.moved) removeGuide(d.id);
+  }, [removeGuide]);
+
+  // Keyboard access: arrows nudge (Shift = big step), Delete removes.
+  const onGuideKeyDown = React.useCallback(
+    (e: React.KeyboardEvent, guide: Guide) => {
+      const big = e.shiftKey ? 10 : 1;
+      let delta: number | null = null;
+      if (guide.axis === "v" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        delta = (e.key === "ArrowRight" ? big : -big);
+      } else if (
+        guide.axis === "h" &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown")
+      ) {
+        delta = (e.key === "ArrowDown" ? big : -big);
+      } else if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        removeGuide(guide.id);
+        return;
+      } else {
+        return;
+      }
+      e.preventDefault();
+      setGuides((prev) =>
+        prev.map((g) => (g.id === guide.id ? { ...g, pos: g.pos + (delta ?? 0) } : g)),
+      );
+    },
+    [removeGuide],
+  );
+
   React.useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const update = () => {
+      // Measure the scroll viewport (not the outer box) so the ruler chrome
+      // is excluded from the fit math when visible.
+      const sc = scrollerRef.current;
       const rect = el.getBoundingClientRect();
-      const sx = (rect.width - 96) / cW;
-      const sy = (rect.height - 96) / cH;
+      const w = sc ? sc.clientWidth : rect.width;
+      const h = sc ? sc.clientHeight : rect.height;
+      const sx = (w - 96) / cW;
+      const sy = (h - 96) / cH;
       setFitScale(Math.max(0.05, Math.min(sx, sy)));
+      syncRulerViewport();
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
+    const sc = scrollerRef.current;
+    if (sc) ro.observe(sc);
     return () => ro.disconnect();
-  }, [cW, cH]);
+  }, [cW, cH, syncRulerViewport]);
+
+  // Guides persist per workspace + device; reload on switch, skip saves mid-drag.
+  React.useEffect(() => {
+    setGuides(loadGuides(workspaceKey, device));
+  }, [workspaceKey, device]);
+
+  React.useEffect(() => {
+    if (draggingId) return;
+    saveGuides(workspaceKey, device, guides);
+  }, [workspaceKey, device, guides, draggingId]);
+
+  // Keep ruler geometry current across zoom, deck edits, toggle, and theme.
+  React.useEffect(() => {
+    const s = snapRef.current;
+    s.scale = scale;
+    s.totalW = totalW;
+    s.cH = cH;
+    syncRulerViewport();
+  }, [scale, totalW, cH, rulersOn, theme, syncRulerViewport]);
+
+  // Figma parity: Shift+R toggles rulers. Ignored while typing.
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.shiftKey && e.key.toLowerCase() === "r") {
+        const target = e.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable)
+        ) {
+          return;
+        }
+        e.preventDefault();
+        toggleRulers();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleRulers]);
+
+  // Drop any queued ruler repaint on unmount.
+  React.useEffect(
+    () => () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
 
   // Zoom persists per device across reloads and device switches.
   React.useEffect(() => {
@@ -204,6 +524,19 @@ export function PreviewStage({
           </>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md border border-figma-divider bg-figma-panel p-0.5 shadow-sm">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded text-figma-secondary hover:text-figma-text data-[pressed=true]:bg-figma-hover data-[pressed=true]:text-figma-text"
+            onClick={toggleRulers}
+            title="Toggle rulers (Shift+R)"
+            aria-label="Toggle rulers"
+            aria-pressed={rulersOn}
+            data-pressed={rulersOn}
+          >
+            <Ruler className="h-3.5 w-3.5" />
+          </Button>
           <span className="hidden px-1.5 text-[11px] tabular-nums lg:inline">{cW}×{cH}</span>
           <Button
             type="button"
@@ -250,9 +583,46 @@ export function PreviewStage({
           </Button>
         </div>
       </div>
-      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden">
-      <div ref={scrollerRef} className="figma-thin-scroll h-full w-full overflow-auto p-6 pt-12 sm:p-10 sm:pt-14">
+      <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {rulersOn ? (
         <div
+          ref={topRulerWrapRef}
+          className="hidden h-6 shrink-0 cursor-ns-resize touch-pan-x touch-pan-y flex-row border-b border-figma-divider sm:flex"
+          title="Drag onto the canvas to add a horizontal guide"
+          onPointerDown={(e) => onRulerPointerDown(e, "h")}
+          onPointerMove={onGuidePointerMove}
+          onPointerUp={onGuidePointerUp}
+          onPointerCancel={onGuidePointerCancel}
+        >
+          <div className="w-6 shrink-0 border-r border-figma-divider bg-figma-panel" aria-hidden="true" />
+          <div className="min-w-0 flex-1 bg-figma-panel">
+            <TopRuler ref={topRulerRef} getSnapshot={getSnapshot} />
+          </div>
+        </div>
+      ) : null}
+      <div className="flex min-h-0 flex-1">
+      {rulersOn ? (
+        <div
+          ref={leftRulerWrapRef}
+          className="hidden w-6 shrink-0 cursor-ew-resize touch-pan-x touch-pan-y border-r border-figma-divider bg-figma-panel sm:block"
+          title="Drag onto the canvas to add a vertical guide"
+          onPointerDown={(e) => onRulerPointerDown(e, "v")}
+          onPointerMove={onGuidePointerMove}
+          onPointerUp={onGuidePointerUp}
+          onPointerCancel={onGuidePointerCancel}
+        >
+          <LeftRuler ref={leftRulerRef} getSnapshot={getSnapshot} />
+        </div>
+      ) : null}
+      <div
+        ref={scrollerRef}
+        onScroll={handleScrollerScroll}
+        onMouseMove={handleScrollerMouseMove}
+        onMouseLeave={handleScrollerMouseLeave}
+        className="figma-thin-scroll min-h-0 min-w-0 flex-1 overflow-auto p-6 pt-12 sm:p-10 sm:pt-14"
+      >
+        <div
+          ref={contentRef}
           style={{
             width: totalW * scale,
             height: cH * scale,
@@ -284,10 +654,88 @@ export function PreviewStage({
               headlineFont={headlineFont}
               labelFont={labelFont}
               background={background}
+              frames={frames}
+              sizes={sizes}
+              headlineText={headlineText}
+              labelText={labelText}
               edit={deckEdit}
             />
           </div>
+          {/* Draggable ruler guides — editor chrome, never exported. */}
+          <div className="pointer-events-none absolute inset-0 select-none">
+            {guides.map((g) => {
+              const p = g.pos * scale;
+              const active = draggingId === g.id;
+              const label = `${Math.round(g.pos)}px`;
+              const hint =
+                g.axis === "v"
+                  ? `Vertical guide at ${label}. Drag to move, double-click to delete.`
+                  : `Horizontal guide at ${label}. Drag to move, double-click to delete.`;
+              return g.axis === "v" ? (
+                <div key={g.id} className="absolute bottom-0 top-0" style={{ left: p }}>
+                  <div
+                    aria-hidden="true"
+                    className="absolute bottom-0 top-0 w-px"
+                    style={{ background: "#0d99ff", opacity: active ? 1 : 0.8 }}
+                  />
+                  <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={hint}
+                    aria-valuenow={Math.round(g.pos)}
+                    aria-valuetext={label}
+                    title={hint}
+                    tabIndex={0}
+                    className="pointer-events-auto absolute bottom-0 top-0 cursor-ew-resize touch-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0d99ff]"
+                    style={{ left: -6, width: 12 }}
+                    onPointerDown={(e) => onGuidePointerDown(e, g)}
+                    onPointerMove={onGuidePointerMove}
+                    onPointerUp={onGuidePointerUp}
+                    onPointerCancel={onGuidePointerCancel}
+                    onDoubleClick={(e) => onGuideDoubleClick(e, g.id)}
+                    onKeyDown={(e) => onGuideKeyDown(e, g)}
+                  />
+                  {active ? (
+                    <div className="absolute left-2 top-2 rounded border border-figma-divider bg-figma-panel px-1 py-0.5 text-[10px] tabular-nums text-figma-text shadow">
+                      {label}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div key={g.id} className="absolute left-0 right-0" style={{ top: p }}>
+                  <div
+                    aria-hidden="true"
+                    className="absolute left-0 right-0 h-px"
+                    style={{ background: "#0d99ff", opacity: active ? 1 : 0.8 }}
+                  />
+                  <div
+                    role="separator"
+                    aria-orientation="horizontal"
+                    aria-label={hint}
+                    aria-valuenow={Math.round(g.pos)}
+                    aria-valuetext={label}
+                    title={hint}
+                    tabIndex={0}
+                    className="pointer-events-auto absolute left-0 right-0 cursor-ns-resize touch-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0d99ff]"
+                    style={{ top: -6, height: 12 }}
+                    onPointerDown={(e) => onGuidePointerDown(e, g)}
+                    onPointerMove={onGuidePointerMove}
+                    onPointerUp={onGuidePointerUp}
+                    onPointerCancel={onGuidePointerCancel}
+                    onDoubleClick={(e) => onGuideDoubleClick(e, g.id)}
+                    onKeyDown={(e) => onGuideKeyDown(e, g)}
+                  />
+                  {active ? (
+                    <div className="absolute left-2 top-2 rounded border border-figma-divider bg-figma-panel px-1 py-0.5 text-[10px] tabular-nums text-figma-text shadow">
+                      {label}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
+      </div>
       </div>
 
       </div>

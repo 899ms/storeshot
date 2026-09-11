@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
+    "mcp": "bun src/mcp/server.ts",
+    "mcp:call": "bun src/mcp/client.ts",
     "electron:dev": "electron ./electron/main.js",
     "dist:mac": "npm run build && electron-builder --mac dmg",
     "dist:mas": "npm run build && electron-builder --mac mas"

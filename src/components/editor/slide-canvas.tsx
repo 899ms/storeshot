@@ -4,9 +4,12 @@ import { Rnd } from "react-rnd";
 import { RotateCw } from "lucide-react";
 import type {
   BuiltInElementId,
+  CanvasSize,
   Device,
+  GlobalTextStyle,
   ElementId,
   ElementTransform,
+  FrameFinish,
   ScreenBackground,
   SelectedElement,
   Slide,
@@ -14,9 +17,12 @@ import type {
   Theme,
 } from "@/lib/types";
 import {
-  CANVAS,
+  DESKTOP_RATIO,
   IPAD_MK_RATIO,
   MK_RATIO,
+  desktopW,
+  desktopWSmall,
+  effectiveCanvas,
   phoneW,
   phoneWSmall,
   tabletW,
@@ -29,23 +35,26 @@ import { screenCanvasLabel } from "@/lib/screen-title";
 import { fontStack } from "@/lib/fonts";
 import { resolveHeadlineStyle, resolveLabelStyle } from "@/lib/caption-style";
 import { DEFAULT_HEADLINE_FONT, DEFAULT_LABEL_FONT } from "@/lib/defaults";
-import { IPad, Phone } from "./device-frames";
+import { Frameless, IPad, Phone } from "./device-frames";
 
 type FrameComp = React.ComponentType<{
   src: string;
   alt?: string;
   style?: React.CSSProperties;
   hideEmpty?: boolean;
+  finish?: FrameFinish;
 }>;
 
-export function getCanvas(device?: Device) {
-  const c = CANVAS[device ?? "iphone"] ?? CANVAS.iphone;
+export function getCanvas(device?: Device, overrides?: Partial<Record<Device, CanvasSize>>) {
+  const c = effectiveCanvas(device ?? "phone", overrides);
   return { cW: c.w, cH: c.h };
 }
 
 // Aspect ratio (w/h) of each device frame — must match device-frames.tsx
 function getFrameAspect(device?: Device) {
-  return device === "ipad" ? IPAD_MK_RATIO : MK_RATIO;
+  if (device === "tablet") return IPAD_MK_RATIO;
+  if (device === "desktop") return DESKTOP_RATIO;
+  return MK_RATIO;
 }
 
 export function getFrameForDevice(device?: Device): {
@@ -53,7 +62,8 @@ export function getFrameForDevice(device?: Device): {
   widthFn: (cW: number, cH: number) => number;
   smallWidthFn: (cW: number, cH: number) => number;
 } {
-  if (device === "ipad") return { Comp: IPad, widthFn: tabletW, smallWidthFn: tabletWSmall };
+  if (device === "tablet") return { Comp: IPad, widthFn: tabletW, smallWidthFn: tabletWSmall };
+  if (device === "desktop") return { Comp: Frameless, widthFn: desktopW, smallWidthFn: desktopWSmall };
   return { Comp: Phone, widthFn: phoneW, smallWidthFn: phoneWSmall };
 }
 
@@ -84,6 +94,13 @@ type Props = {
   labelFont?: string;
   /** Project default background. A per-screen Slide.background wins. */
   background?: ScreenBackground;
+  /** Mockup chassis finishes for Phone/Tablet. Absent = titanium. */
+  frames?: Partial<Record<"phone" | "tablet", FrameFinish>>;
+  /** Per-device canvas size overrides. Absent = built-in defaults. */
+  sizes?: Partial<Record<Device, CanvasSize>>;
+  /** Project-wide Headline/Label defaults (Settings → Text). */
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
 };
 
 type DeckEditHandlers = {
@@ -117,6 +134,13 @@ type DeckCanvasProps = {
   labelFont?: string;
   /** Project default background. A per-screen Slide.background wins. */
   background?: ScreenBackground;
+  /** Mockup chassis finishes for Phone/Tablet. Absent = titanium. */
+  frames?: Partial<Record<"phone" | "tablet", FrameFinish>>;
+  /** Per-device canvas size overrides. Absent = built-in defaults. */
+  sizes?: Partial<Record<Device, CanvasSize>>;
+  /** Project-wide Headline/Label defaults (Settings → Text). */
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   /** Spacing between screens in canvas px. Preview uses it for isolated
    * decks so separate pages read as separate; export always uses 0. */
   gap?: number;
@@ -287,6 +311,8 @@ function Caption({
   inverted,
   headlineFont,
   labelFont,
+  headlineText,
+  labelText,
   onFocus,
 }: {
   cW: number;
@@ -300,6 +326,8 @@ function Caption({
   inverted?: boolean;
   headlineFont?: string;
   labelFont?: string;
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   onFocus?: () => void;
 }) {
   const fg = inverted ? theme.fgAlt : theme.fg;
@@ -307,8 +335,8 @@ function Caption({
   // Scale typography off the *shorter* dimension so landscape layouts don't
   // produce headlines so tall they overlap the device frame.
   const unit = Math.min(cW, cH);
-  const labelStyle = resolveLabelStyle(slide, unit, labelFont || DEFAULT_LABEL_FONT, accent);
-  const headlineStyle = resolveHeadlineStyle(slide, unit, headlineFont || DEFAULT_HEADLINE_FONT, fg);
+  const labelStyle = resolveLabelStyle(slide, unit, labelFont || DEFAULT_LABEL_FONT, accent, labelText);
+  const headlineStyle = resolveHeadlineStyle(slide, unit, headlineFont || DEFAULT_HEADLINE_FONT, fg, headlineText);
   // RTL locales (ar-SA, he) read right-to-left: flip left alignment and set
   // bidi context so punctuation/numbers order correctly in preview + export.
   const rtl = isRtlLocale(locale);
@@ -519,8 +547,12 @@ function rectFor(
   };
 }
 
-function getSlideGeometry(slide: Slide, device: Device) {
-  const { cW, cH } = getCanvas(device);
+function getSlideGeometry(
+  slide: Slide,
+  device: Device,
+  overrides?: Partial<Record<Device, CanvasSize>>,
+) {
+  const { cW, cH } = getCanvas(device, overrides);
   const { Comp: Frame, widthFn, smallWidthFn } = getFrameForDevice(device);
   const frameAspect = getFrameAspect(device);
   const fwFrac = widthFn(cW, cH);
@@ -533,13 +565,14 @@ export function getElementTransform(
   slide: Slide,
   device: Device,
   id: ElementId,
+  overrides?: Partial<Record<Device, CanvasSize>>,
 ): ElementTransform | undefined {
   if (id.startsWith("text:")) {
     const textId = id.slice("text:".length);
     const textElement = slide.textElements?.find((element) => element.id === textId);
     return textElement?.transform;
   }
-  const { defaults } = getSlideGeometry(slide, device);
+  const { defaults } = getSlideGeometry(slide, device, overrides);
   const rect = rectFor(id as BuiltInElementId, slide, defaults);
   if (!rect) return undefined;
   const saved = slide.transforms?.[id as BuiltInElementId];
@@ -574,8 +607,12 @@ function SlideCanvasInner({
   headlineFont,
   labelFont,
   background,
+  frames,
+  sizes,
+  headlineText,
+  labelText,
 }: Props) {
-  const { cW, cH } = getCanvas(device);
+  const { cW, cH } = getCanvas(device, sizes);
 
   const handleBackgroundMouseDown = editable
     ? (e: React.MouseEvent<HTMLDivElement>) => {
@@ -610,6 +647,10 @@ function SlideCanvasInner({
         boundsW={cW}
         boundsH={cH}
         allowCrossScreen={false}
+        frames={frames}
+        sizes={sizes}
+        headlineText={headlineText}
+        labelText={labelText}
       />
     </div>
   );
@@ -640,7 +681,11 @@ function areDeckPropsEqual(prev: DeckCanvasProps, next: DeckCanvasProps): boolea
     prev.showGuides === next.showGuides &&
     prev.headlineFont === next.headlineFont &&
     prev.labelFont === next.labelFont &&
-    prev.background === next.background
+    prev.background === next.background &&
+    prev.frames === next.frames &&
+    prev.sizes === next.sizes &&
+    prev.headlineText === next.headlineText &&
+    prev.labelText === next.labelText
   );
 }
 
@@ -672,6 +717,10 @@ const MemoSlide = React.memo(
       boundsW,
       boundsH,
       allowCrossScreen,
+      frames,
+      sizes,
+      headlineText,
+      labelText,
     } = elementsProps;
     const perSlideEdit: EditHandlers | undefined = React.useMemo(
       () =>
@@ -708,6 +757,10 @@ const MemoSlide = React.memo(
         boundsW={boundsW}
         boundsH={boundsH}
         allowCrossScreen={allowCrossScreen}
+        frames={frames}
+        sizes={sizes}
+        headlineText={headlineText}
+        labelText={labelText}
       />
     );
     if (connectedCanvas) return elements;
@@ -753,7 +806,11 @@ const MemoSlide = React.memo(
     prev.boundsH === next.boundsH &&
     prev.allowCrossScreen === next.allowCrossScreen &&
     prev.connectedCanvas === next.connectedCanvas &&
-    prev.wrapLeft === next.wrapLeft,
+    prev.wrapLeft === next.wrapLeft &&
+    prev.frames === next.frames &&
+    prev.sizes === next.sizes &&
+    prev.headlineText === next.headlineText &&
+    prev.labelText === next.labelText,
 );
 
 // Figma-style screen title above each frame: click selects, second click or
@@ -932,9 +989,13 @@ function DeckCanvasInner({
   headlineFont,
   labelFont,
   background,
+  frames,
+  sizes,
+  headlineText,
+  labelText,
   gap = 0,
 }: DeckCanvasProps) {
-  const { cW, cH } = getCanvas(device);
+  const { cW, cH } = getCanvas(device, sizes);
   const stride = cW + gap;
   const totalW = Math.max(1, slides.length) * cW + Math.max(0, slides.length - 1) * gap;
   // Editor titles float above each frame (Figma-style); export stays clipped.
@@ -1024,6 +1085,10 @@ function DeckCanvasInner({
           boundsW={connectedCanvas ? totalW : cW}
           boundsH={cH}
           allowCrossScreen={connectedCanvas}
+          frames={frames}
+          sizes={sizes}
+          headlineText={headlineText}
+          labelText={labelText}
           connectedCanvas={connectedCanvas}
           wrapLeft={index * stride}
         />
@@ -1216,6 +1281,10 @@ type SlideElementsProps = {
   boundsW: number;
   boundsH: number;
   allowCrossScreen: boolean;
+  frames?: Partial<Record<"phone" | "tablet", FrameFinish>>;
+  sizes?: Partial<Record<Device, CanvasSize>>;
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
 };
 
 function areSlideElementsEqual(prev: SlideElementsProps, next: SlideElementsProps): boolean {
@@ -1237,7 +1306,11 @@ function areSlideElementsEqual(prev: SlideElementsProps, next: SlideElementsProp
     prev.screenX === next.screenX &&
     prev.boundsW === next.boundsW &&
     prev.boundsH === next.boundsH &&
-    prev.allowCrossScreen === next.allowCrossScreen
+    prev.allowCrossScreen === next.allowCrossScreen &&
+    prev.frames === next.frames &&
+    prev.sizes === next.sizes &&
+    prev.headlineText === next.headlineText &&
+    prev.labelText === next.labelText
   );
 }
 
@@ -1257,10 +1330,16 @@ function SlideElementsInner({
   boundsW,
   boundsH,
   allowCrossScreen,
+  frames,
+  sizes,
+  headlineText,
+  labelText,
 }: SlideElementsProps) {
   const screenshot = resolveScreenshot(slide.screenshot, locale);
   const screenshotSecondary = resolveScreenshot(slide.screenshotSecondary, locale);
-  const { cW, cH, Frame, frameAspect, defaults } = getSlideGeometry(slide, device);
+  const { cW, cH, Frame, frameAspect, defaults } = getSlideGeometry(slide, device, sizes);
+  const finish: FrameFinish | undefined =
+    device === "phone" || device === "tablet" ? frames?.[device] : undefined;
   const inverted = !!slide.inverted;
   // Static screens render one full-bleed image plus any overlay text
   // elements — no frames or caption. Branching here covers SlideCanvas,
@@ -1310,6 +1389,8 @@ function SlideElementsInner({
         inverted={inverted}
         headlineFont={headlineFont}
         labelFont={labelFont}
+        headlineText={headlineText}
+        labelText={labelText}
         onFocus={() => edit?.onSelectElement?.("caption")}
       />
     );
@@ -1376,6 +1457,7 @@ function SlideElementsInner({
         <Frame
           src={src}
           hideEmpty={hideEmpty}
+          finish={finish}
           style={{ width: "100%", height: "100%", ...extraStyle }}
         />
       </Movable>

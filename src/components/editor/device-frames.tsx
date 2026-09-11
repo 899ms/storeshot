@@ -2,6 +2,7 @@
 import * as React from "react";
 import { IPAD_MK_RATIO } from "@/lib/constants";
 import { img } from "@/lib/image-cache";
+import type { FrameFinish } from "@/lib/types";
 
 type FrameProps = {
   src: string;
@@ -9,11 +10,64 @@ type FrameProps = {
   style?: React.CSSProperties;
   /** When true, hide EmptySlot placeholder (so it doesn't bake into exports). */
   hideEmpty?: boolean;
+  /** Chassis finish for Phone/Tablet. "none" renders edge-to-edge, no bezel. */
+  finish?: FrameFinish;
 };
 
-// 6.9" iPhone (Pro Max) — Vector precision frame with Dynamic Island & Titanium chassis
-export function Phone({ src, alt = "", style, hideEmpty }: FrameProps) {
+// Frameless full-bleed image (Desktop, or Phone/Tablet with finish "none").
+function FramelessImage({
+  src,
+  alt = "",
+  style,
+  hideEmpty,
+  aspectRatio,
+}: FrameProps & { aspectRatio?: string }) {
   const resolved = img(src);
+  if (!resolved) {
+    if (hideEmpty) return <div style={{ width: "100%", height: "100%", ...style }} />;
+    return (
+      <div style={{ position: "relative", aspectRatio, ...style }}>
+        <EmptySlot />
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: "relative", aspectRatio, ...style }}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- canvas pixels, not LCP content */}
+      <img
+        src={resolved}
+        alt={alt}
+        style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }}
+        draggable={false}
+      />
+    </div>
+  );
+}
+
+// Desktop — frameless full-bleed canvas (Mac App Store style).
+export function Frameless({ src, alt = "", style, hideEmpty }: FrameProps) {
+  return <FramelessImage src={src} alt={alt} style={style} hideEmpty={hideEmpty} />;
+}
+
+const CHASSIS: Record<Exclude<FrameFinish, "none">, { background: string }> = {
+  titanium: {
+    background: "linear-gradient(150deg, #44444a 0%, #2b2b30 25%, #18181c 65%, #2a2a30 100%)",
+  },
+  black: {
+    background: "linear-gradient(150deg, #1c1c20 0%, #0c0c0f 40%, #000000 70%, #17171b 100%)",
+  },
+  white: {
+    background: "linear-gradient(150deg, #f2f2f5 0%, #cfcfd6 30%, #a9a9b2 65%, #e3e3e9 100%)",
+  },
+};
+
+// 6.9" Phone (Pro Max) — Vector precision frame with Dynamic Island & chassis
+export function Phone({ src, alt = "", style, hideEmpty, finish = "titanium" }: FrameProps) {
+  const resolved = img(src);
+  if (finish === "none") {
+    return <FramelessImage src={src} alt={alt} style={style} hideEmpty={hideEmpty} aspectRatio="430 / 900" />;
+  }
+  const chassis = CHASSIS[finish] ?? CHASSIS.titanium;
   return (
     <div
       style={{
@@ -22,13 +76,13 @@ export function Phone({ src, alt = "", style, hideEmpty }: FrameProps) {
         ...style,
       }}
     >
-      {/* Outer Titanium Chassis */}
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          borderRadius: "13% / 6.25%",
-          background: "linear-gradient(150deg, #44444a 0%, #2b2b30 25%, #18181c 65%, #2a2a30 100%)",
+        {/* Outer Chassis */}
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: "13% / 6.25%",
+            background: chassis.background,
           boxShadow:
             "inset 0 0 0 1.5px rgba(255, 255, 255, 0.22), inset 0 0 0 3px rgba(0, 0, 0, 0.8), 0 20px 50px -10px rgba(0, 0, 0, 0.65), 0 6px 18px rgba(0, 0, 0, 0.45)",
           position: "relative",
@@ -200,11 +254,15 @@ export function Phone({ src, alt = "", style, hideEmpty }: FrameProps) {
   );
 }
 
-// 13" iPad Pro — Vector precision frame, uniform bezel, top-center camera.
+// 13" Tablet Pro — Vector precision frame, uniform bezel, top-center camera.
 // Screen slot (94.8% × 96.0%) is exactly 2064/2752 aspect with the outer
 // IPAD_MK_RATIO, so screenshots show fully.
-export function IPad({ src, alt = "", style, hideEmpty }: FrameProps) {
+export function IPad({ src, alt = "", style, hideEmpty, finish = "titanium" }: FrameProps) {
   const resolved = img(src);
+  if (finish === "none") {
+    return <FramelessImage src={src} alt={alt} style={style} hideEmpty={hideEmpty} aspectRatio={String(IPAD_MK_RATIO)} />;
+  }
+  const chassis = CHASSIS[finish] ?? CHASSIS.titanium;
   return (
     <div
       style={{
@@ -219,7 +277,7 @@ export function IPad({ src, alt = "", style, hideEmpty }: FrameProps) {
           width: "100%",
           height: "100%",
           borderRadius: "4% / 3%",
-          background: "linear-gradient(150deg, #4b4b53 0%, #2a2a30 30%, #131316 70%, #2e2e35 100%)",
+          background: chassis.background,
           boxShadow:
             "inset 0 0 0 1.5px rgba(255, 255, 255, 0.2), inset 0 0 0 3px rgba(0, 0, 0, 0.8), 0 20px 50px -10px rgba(0, 0, 0, 0.6), 0 6px 18px rgba(0, 0, 0, 0.4)",
           position: "relative",

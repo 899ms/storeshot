@@ -13,7 +13,6 @@ import {
   Download,
   Languages,
   Loader2,
-  Plus,
   RotateCw,
   Trash2,
   Type,
@@ -34,7 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { activeProvider, useAppSettings } from "@/lib/app-settings";
 import { LAYOUT_HINT, LAYOUT_LABEL } from "@/lib/constants";
-import { DEFAULT_HEADLINE_FONT, DEFAULT_LABEL_FONT, nid } from "@/lib/defaults";
+import { DEFAULT_HEADLINE_FONT, DEFAULT_LABEL_FONT } from "@/lib/defaults";
 import { CURATED_FONTS, curatedWeights, ensureFontLoaded } from "@/lib/fonts";
 import {
   DEFAULT_HEADLINE_SIZE_FACTOR,
@@ -58,10 +57,12 @@ import {
 } from "@/lib/translate";
 import type {
   BuiltInElementId,
+  CanvasSize,
   CaptionTextStyle,
   Device,
   ElementId,
   ElementTransform,
+  GlobalTextStyle,
   Slide,
   SlideLayout,
   TextElement,
@@ -81,6 +82,9 @@ type Props = {
   disabled?: boolean;
   headlineFont?: string;
   labelFont?: string;
+  canvasSizes?: Partial<Record<Device, CanvasSize>>;
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   onExportSlide?: () => void;
   exportLabel?: string;
   onChange: (patch: Partial<Slide>) => void;
@@ -103,6 +107,9 @@ export function Inspector({
   disabled,
   headlineFont,
   labelFont,
+  canvasSizes,
+  headlineText,
+  labelText,
   onExportSlide,
   exportLabel,
   onChange,
@@ -129,11 +136,12 @@ export function Inspector({
   // Figma "double-click canvas title to rename": canvas dispatches
   // storeshot:focus-screen-title with the slide id; focus the Title input.
   const titleInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [tab, setTab] = React.useState("content");
   React.useEffect(() => {
     function onFocusTitle(e: Event) {
       const detail = (e as CustomEvent<string>).detail;
       if (detail && detail !== slide.id) return;
-      // Switch to Content tab first so the input is mounted, then focus it.
+      // The Title input lives in Content — switch there first so it mounts.
       setTab("content");
       requestAnimationFrame(() => titleInputRef.current?.focus());
     }
@@ -141,15 +149,14 @@ export function Inspector({
     return () => window.removeEventListener("storeshot:focus-screen-title", onFocusTitle);
   }, [slide.id]);
 
-  const [tab, setTab] = React.useState("content");
   const lastSelectedRef = React.useRef<ElementId | null>(null);
-  // Figma behavior: selecting an element jumps to Arrange, selecting the
-  // screen (no element) jumps back to Content. Ref-compare so typing in a
-  // field never yanks the tab out from under the user.
+  // Figma behavior: selecting an element jumps to Properties, clearing the
+  // selection returns to Content. Ref-compare so typing in a field never
+  // yanks the tab out from under the user.
   React.useEffect(() => {
     if (lastSelectedRef.current === selectedElementId) return;
     lastSelectedRef.current = selectedElementId;
-    setTab(selectedElementId ? "arrange" : "content");
+    setTab(selectedElementId ? "properties" : "content");
   }, [selectedElementId]);
 
   const elementName = selectedElementId ? elementLabel(selectedElementId) : null;
@@ -178,10 +185,9 @@ export function Inspector({
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 border-b border-figma-divider px-3 pt-2">
-          <TabsList className="grid h-8 w-full grid-cols-3 rounded-md bg-figma-hover p-0.5">
+          <TabsList className="grid h-8 w-full grid-cols-2 rounded-md bg-figma-hover p-0.5">
             <TabsTrigger value="content" className="h-7 rounded text-[12px]">Content</TabsTrigger>
-            <TabsTrigger value="design" className="h-7 rounded text-[12px]">Fill</TabsTrigger>
-            <TabsTrigger value="arrange" className="h-7 rounded text-[12px]">Arrange</TabsTrigger>
+            <TabsTrigger value="properties" className="h-7 rounded text-[12px]">Properties</TabsTrigger>
           </TabsList>
         </div>
         <div className="figma-thin-scroll min-h-0 flex-1 overflow-y-auto p-3">
@@ -233,23 +239,6 @@ export function Inspector({
 
             {!isStatic && (
               <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
-                <p className="figma-section-label">Text</p>
-                <Label className="text-[11px] text-figma-secondary" htmlFor="screen-label">
-                  Label
-                </Label>
-                <Input
-                  id="screen-label"
-                  value={localeLabel}
-                  dir="auto"
-                  onChange={(e) => setLocaleField("label", e.target.value)}
-                  placeholder={labelPlaceholder}
-                  className="h-7 text-[12px]"
-                />
-              </div>
-            )}
-
-            {!isStatic && (
-              <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
                 <div className="flex items-baseline justify-between">
                   <Label className="text-[11px] text-figma-secondary" htmlFor="screen-headline">
                     Headline
@@ -264,6 +253,23 @@ export function Inspector({
                   rows={3}
                   placeholder={headlinePlaceholder}
                   className="text-[12px]"
+                />
+              </div>
+            )}
+
+            {!isStatic && (
+              <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
+                <p className="figma-section-label">Text</p>
+                <Label className="text-[11px] text-figma-secondary" htmlFor="screen-label">
+                  Label
+                </Label>
+                <Input
+                  id="screen-label"
+                  value={localeLabel}
+                  dir="auto"
+                  onChange={(e) => setLocaleField("label", e.target.value)}
+                  placeholder={labelPlaceholder}
+                  className="h-7 text-[12px]"
                 />
               </div>
             )}
@@ -308,8 +314,6 @@ export function Inspector({
                 onChange={onChange}
               />
             )}
-          </TabsContent>
-          <TabsContent value="design" className="mt-0 space-y-3">
             <div className="rounded-md border border-figma-divider bg-figma-panel p-2.5">
               <p className="figma-section-label mb-2">Fill</p>
               <BackgroundEditor
@@ -319,7 +323,7 @@ export function Inspector({
               />
             </div>
           </TabsContent>
-          <TabsContent value="arrange" className="mt-0 space-y-3">
+          <TabsContent value="properties" className="mt-0 space-y-3">
             <ElementTransformControls
               slide={slide}
               device={device}
@@ -329,6 +333,9 @@ export function Inspector({
               textOnly={isStatic}
               headlineFont={headlineFont}
               labelFont={labelFont}
+              canvasSizes={canvasSizes}
+              headlineText={headlineText}
+              labelText={labelText}
               onChange={onChange}
               onSelectElement={onSelectElement}
             />
@@ -489,6 +496,9 @@ function ElementTransformControls({
   textOnly,
   headlineFont,
   labelFont,
+  canvasSizes,
+  headlineText,
+  labelText,
   onChange,
   onSelectElement,
 }: {
@@ -501,6 +511,9 @@ function ElementTransformControls({
   textOnly?: boolean;
   headlineFont?: string;
   labelFont?: string;
+  canvasSizes?: Partial<Record<Device, CanvasSize>>;
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   onChange: (patch: Partial<Slide>) => void;
   onSelectElement: (id: ElementId | null) => void;
 }) {
@@ -515,7 +528,7 @@ function ElementTransformControls({
   const activeId =
     selectedElementId && present.includes(selectedElementId) ? selectedElementId : null;
   const activeTransform = activeId
-    ? getElementTransform(slide, device, activeId)
+    ? getElementTransform(slide, device, activeId, canvasSizes)
     : undefined;
   const activeTextElement =
     activeId && isTextElementId(activeId)
@@ -523,7 +536,7 @@ function ElementTransformControls({
       : null;
 
   function getTransform(id: ElementId) {
-    return getElementTransform(slide, device, id);
+    return getElementTransform(slide, device, id, canvasSizes);
   }
 
   function patchElement(id: ElementId, patch: Partial<ElementTransform>) {
@@ -566,33 +579,6 @@ function ElementTransformControls({
     onSelectElement(null);
   }
 
-  function addTextElement() {
-    const { cW, cH } = getCanvas(device);
-    const id = nid();
-    const zIndex =
-      Math.max(
-        5,
-        ...present.map((elementId) => getTransform(elementId)?.zIndex ?? defaultZ(elementId)),
-      ) + 1;
-    const element: TextElement = {
-      id,
-      text: writeLocalized({}, locale, "New text"),
-      transform: {
-        x: cW * 0.18,
-        y: cH * 0.42,
-        width: cW * 0.64,
-        height: cH * 0.12,
-        rotation: 0,
-        zIndex,
-      },
-      fontSize: Math.round(Math.min(cW, cH) * 0.065),
-      fontWeight: 800,
-      align: "center",
-    };
-    onChange({ textElements: [...(slide.textElements || []), element] });
-    onSelectElement(toTextElementId(id));
-  }
-
   // Z-order: re-rank zIndex among present elements so they remain contiguous.
   function reorder(id: ElementId, dir: "front" | "back" | "up" | "down") {
     const ranked = [...present].sort((a, b) => {
@@ -630,67 +616,67 @@ function ElementTransformControls({
   }
 
   const overlayDefaultColor = slide.inverted ? theme.fgAlt : theme.fg;
+  const showCaptionType = activeId === "caption" && !textOnly;
 
-  return (
-    <Card className="space-y-2.5 rounded-md border-figma-divider bg-figma-panel p-2.5 shadow-none">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="figma-section-label">Layers</p>
-          <p className="mt-0.5 text-[11px] leading-snug text-figma-secondary">
-            {activeId
-              ? "Fine-tune geometry, rotation, and stacking — or focus it on the canvas and use arrow keys."
-              : "Click or Tab to an element on the canvas to fine-tune it."}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 shrink-0 rounded border-figma-divider px-2 text-[12px]"
-          onClick={addTextElement}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Text
-        </Button>
-      </div>
+  const elementPanel = activeId ? (
+    <ActiveElementPanel
+      activeId={activeId}
+      transform={activeTransform}
+      textElement={activeTextElement || undefined}
+      locale={locale}
+      labelFont={labelFont || DEFAULT_LABEL_FONT}
+      textDefaultColor={overlayDefaultColor}
+      onRotate={(rotation) => patchElement(activeId, { rotation })}
+      onRect={(patch) => patchElement(activeId, patch)}
+      onReorder={(dir) => reorder(activeId, dir)}
+      onTextChange={(value) => {
+        if (activeTextElement) setTextElementValue(activeTextElement, value);
+      }}
+      onTextPatch={(patch) => {
+        if (activeTextElement) patchTextElement(activeTextElement.id, patch);
+      }}
+      onDeleteText={() => {
+        if (activeTextElement) deleteTextElement(activeTextElement);
+      }}
+    />
+  ) : (
+    <div className="rounded-md border border-dashed border-figma-divider bg-figma-hover/50 p-4 text-center text-[11px] text-figma-secondary">
+      No element selected
+    </div>
+  );
 
-      {activeId === "caption" && !textOnly ? (
+  // Caption (Headline element): standalone sections, no Layers wrapper —
+  // Headline geometry above, Caption type below.
+  if (showCaptionType) {
+    return (
+      <div className="space-y-3">
+        {elementPanel}
         <CaptionTypographyPanel
           slide={slide}
           device={device}
           theme={theme}
           headlineFont={headlineFont || DEFAULT_HEADLINE_FONT}
           labelFont={labelFont || DEFAULT_LABEL_FONT}
+          canvasSizes={canvasSizes}
+          headlineText={headlineText}
+          labelText={labelText}
           onChange={onChange}
         />
-      ) : null}
+      </div>
+    );
+  }
 
-      {activeId ? (
-        <ActiveElementPanel
-          activeId={activeId}
-          transform={activeTransform}
-          textElement={activeTextElement || undefined}
-          locale={locale}
-          labelFont={labelFont || DEFAULT_LABEL_FONT}
-          textDefaultColor={overlayDefaultColor}
-          onRotate={(rotation) => patchElement(activeId, { rotation })}
-          onRect={(patch) => patchElement(activeId, patch)}
-          onReorder={(dir) => reorder(activeId, dir)}
-          onTextChange={(value) => {
-            if (activeTextElement) setTextElementValue(activeTextElement, value);
-          }}
-          onTextPatch={(patch) => {
-            if (activeTextElement) patchTextElement(activeTextElement.id, patch);
-          }}
-          onDeleteText={() => {
-            if (activeTextElement) deleteTextElement(activeTextElement);
-          }}
-        />
-      ) : (
-        <div className="rounded-md border border-dashed border-figma-divider bg-figma-hover/50 p-4 text-center text-[11px] text-figma-secondary">
-          No element selected
-        </div>
-      )}
+  return (
+    <Card className="space-y-2.5 rounded-md border-figma-divider bg-figma-panel p-2.5 shadow-none">
+      <div>
+        <p className="figma-section-label">Layers</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-figma-secondary">
+          {activeId
+            ? "Fine-tune geometry, rotation, and stacking — or focus it on the canvas and use arrow keys."
+            : "Click or Tab to an element on the canvas to fine-tune it."}
+        </p>
+      </div>
+      {elementPanel}
     </Card>
   );
 }
@@ -704,6 +690,9 @@ function CaptionTypographyPanel({
   theme,
   headlineFont,
   labelFont,
+  canvasSizes,
+  headlineText,
+  labelText,
   onChange,
 }: {
   slide: Slide;
@@ -711,12 +700,28 @@ function CaptionTypographyPanel({
   theme: Theme;
   headlineFont: string;
   labelFont: string;
+  canvasSizes?: Partial<Record<Device, CanvasSize>>;
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   onChange: (patch: Partial<Slide>) => void;
 }) {
-  const { cW, cH } = getCanvas(device);
+  const { cW, cH } = getCanvas(device, canvasSizes);
   const unit = Math.min(cW, cH);
   const fg = slide.inverted ? theme.fgAlt : theme.fg;
   const hasOverrides = slide.labelStyle !== undefined || slide.headlineStyle !== undefined;
+  const hasGlobals = headlineText !== undefined || labelText !== undefined;
+  // Effective defaults: global (Settings → Text) wins over builtins. Reset
+  // clears per-screen overrides back to these.
+  const headlineDefaults = {
+    size: Math.round(unit * (headlineText?.sizeFactor ?? DEFAULT_HEADLINE_SIZE_FACTOR)),
+    weight: headlineText?.fontWeight ?? DEFAULT_HEADLINE_WEIGHT,
+    color: headlineText?.color ?? fg,
+  };
+  const labelDefaults = {
+    size: Math.round(unit * (labelText?.sizeFactor ?? DEFAULT_LABEL_SIZE_FACTOR)),
+    weight: labelText?.fontWeight ?? DEFAULT_LABEL_WEIGHT,
+    color: labelText?.color ?? theme.accent,
+  };
 
   function patch(key: "labelStyle" | "headlineStyle", p: Partial<CaptionTextStyle>) {
     onChange({ [key]: patchCaptionStyle(slide[key], p) } as Partial<Slide>);
@@ -736,28 +741,37 @@ function CaptionTypographyPanel({
           className="h-6 px-2 text-[11px] text-muted-foreground"
           disabled={!hasOverrides}
           onClick={() => onChange({ labelStyle: undefined, headlineStyle: undefined })}
-          title="Clear overrides, back to project defaults"
+          title={
+            hasGlobals
+              ? "Clear overrides, back to Settings → Text defaults"
+              : "Clear overrides, back to project defaults"
+          }
         >
           Reset
         </Button>
       </div>
-      <CaptionStyleFields
-        title="Label"
-        style={slide.labelStyle}
-        defaultSize={Math.round(unit * DEFAULT_LABEL_SIZE_FACTOR)}
-        defaultWeight={DEFAULT_LABEL_WEIGHT}
-        defaultFamily={labelFont}
-        defaultColor={theme.accent}
-        onPatch={(p) => patch("labelStyle", p)}
-      />
+      {hasOverrides && hasGlobals ? (
+        <p className="text-[10px] text-figma-secondary">
+          This screen overrides Settings → Text. Reset to follow the global style.
+        </p>
+      ) : null}
       <CaptionStyleFields
         title="Headline"
         style={slide.headlineStyle}
-        defaultSize={Math.round(unit * DEFAULT_HEADLINE_SIZE_FACTOR)}
-        defaultWeight={DEFAULT_HEADLINE_WEIGHT}
+        defaultSize={headlineDefaults.size}
+        defaultWeight={headlineDefaults.weight}
         defaultFamily={headlineFont}
-        defaultColor={fg}
+        defaultColor={headlineDefaults.color}
         onPatch={(p) => patch("headlineStyle", p)}
+      />
+      <CaptionStyleFields
+        title="Label"
+        style={slide.labelStyle}
+        defaultSize={labelDefaults.size}
+        defaultWeight={labelDefaults.weight}
+        defaultFamily={labelFont}
+        defaultColor={labelDefaults.color}
+        onPatch={(p) => patch("labelStyle", p)}
       />
     </div>
   );

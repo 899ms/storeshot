@@ -88,8 +88,63 @@ export function activeProvider(settings: AppSettings): ProviderConfig {
   );
 }
 
+// Cross-instance sync: every mounted useAppSettings() converges on the latest
+// write. Without this, saving the API key in SettingsDialog leaves the
+// already-mounted editor/inspector/translate instances holding a stale
+// empty-key snapshot (translate stays disabled until a full reload).
+type Snapshot = { settings: AppSettings; version: number };
+let latest: Snapshot | null = null;
+const listeners = new Set<(snap: Snapshot) => void>();
+
+function publish(next: AppSettings): Snapshot {
+  const snap: Snapshot = { settings: next, version: (latest?.version ?? 0) + 1 };
+  latest = snap;
+  for (const l of [...listeners]) l(snap);
+  return snap;
+}
+
 export function useAppSettings() {
-  const [settings, setSettings] = React.useState<AppSettings>(load);
+  const [settings, setSettingsState] = React.useState<AppSettings>(
+    () => latest?.settings ?? load(),
+  );
+  const seenVersion = React.useRef(latest?.version ?? 0);
+
+  React.useEffect(() => {
+    const onPublish = (snap: Snapshot) => {
+      if (snap.version > seenVersion.current) {
+        seenVersion.current = snap.version;
+        setSettingsState(snap.settings);
+      }
+    };
+    listeners.add(onPublish);
+    // Catch a publish that landed between render and subscribe.
+    if (latest && latest.version > seenVersion.current) {
+      seenVersion.current = latest.version;
+      setSettingsState(latest.settings);
+    }
+    return () => {
+      listeners.delete(onPublish);
+    };
+  }, []);
+
+  // Cross-tab: another tab wrote the settings key.
+  React.useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== SETTINGS_KEY) return;
+      try {
+        const next = sanitize(JSON.parse(e.newValue ?? "null"));
+        seenVersion.current = (latest?.version ?? 0) + 1;
+        const snap: Snapshot = { settings: next, version: seenVersion.current };
+        latest = snap;
+        setSettingsState(next);
+        for (const l of [...listeners]) l(snap);
+      } catch {
+        // ignore malformed cross-tab writes
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   React.useEffect(() => {
     try {
@@ -99,27 +154,40 @@ export function useAppSettings() {
     }
   }, [settings]);
 
-  const patchProvider = React.useCallback((id: string, patch: Partial<ProviderConfig>) => {
-    setSettings((prev) => ({
-      ...prev,
-      providers: prev.providers.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              ...patch,
-              baseUrl:
-                patch.baseUrl !== undefined ? patch.baseUrl.replace(/\/+$/, "") : p.baseUrl,
-            }
-          : p,
-      ),
-    }));
+  // All writes funnel through here so every mounted instance converges.
+  // Reads the shared latest (never a stale closure) as the update base.
+  const setSettings = React.useCallback((update: React.SetStateAction<AppSettings>) => {
+    const base = latest?.settings ?? load();
+    const next = typeof update === "function" ? update(base) : update;
+    const snap = publish(next);
+    seenVersion.current = snap.version;
+    setSettingsState(next);
   }, []);
+
+  const patchProvider = React.useCallback(
+    (id: string, patch: Partial<ProviderConfig>) => {
+      setSettings((prev) => ({
+        ...prev,
+        providers: prev.providers.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                ...patch,
+                baseUrl:
+                  patch.baseUrl !== undefined ? patch.baseUrl.replace(/\/+$/, "") : p.baseUrl,
+              }
+            : p,
+        ),
+      }));
+    },
+    [setSettings],
+  );
 
   const addProvider = React.useCallback(() => {
     const next = newProvider();
     setSettings((prev) => ({ ...prev, providers: [...prev.providers, next] }));
     return next.id;
-  }, []);
+  }, [setSettings]);
 
   const removeProvider = React.useCallback((id: string) => {
     setSettings((prev) => {
@@ -132,7 +200,7 @@ export function useAppSettings() {
           prev.activeProviderId === id ? providers[0].id : prev.activeProviderId,
       };
     });
-  }, []);
+  }, [setSettings]);
 
   return { settings, setSettings, patchProvider, addProvider, removeProvider };
 }

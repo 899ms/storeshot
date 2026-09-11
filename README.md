@@ -121,3 +121,50 @@ process can read/write through it. API keys live in browser `localStorage`
 and are sent only to your configured AI provider — never to this server, git,
 or logs. Uploads accept PNG/JPG only (≤8MB); project saves are shape- and
 size-validated.
+
+## MCP server
+
+Opt-in local stdio MCP server (`src/mcp/server.ts`, zero dependencies).
+It speaks newline-delimited JSON-RPC 2.0 on stdio (logs on stderr only) and
+operates on an explicit absolute workspace path per call.
+
+```bash
+bun run mcp
+```
+
+Claude Desktop config snippet:
+
+```json
+{ "mcpServers": { "storeshot": { "command": "bun", "args": ["src/mcp/server.ts"], "cwd": "/path/to/app-store-screenshots" } } }
+```
+
+Tools: `get_project`, `list_slides`, `list_locales`, `list_uploads`,
+`preview_export_paths`, `export_manifest`, `render_export` (headless PNG+ZIP,
+needs `python3` + Pillow; honors canvas-size overrides and phone/tablet
+finishes, desktop included), `update_copy`, `add_slide`, `rename_slide`,
+`set_layout`, `reorder_slides`, `delete_slide` (needs `confirm:true`),
+`set_locales`, `set_background`, `set_screenshot`, `upload_image` (PNG/JPG
+≤8MB), `lint_deck`, `preview_translation`, `translate_locale`
+(OpenRouter-compatible provider call; `apiKey` is per-call only — never
+stored, logged, or returned). Device names are `phone`/`tablet`/`desktop`
+(`iphone`/`ipad` still accepted); legacy project files migrate on load.
+Resources: `project`, `slides/phone|tablet|desktop`, `locales`,
+`export-targets`, `uploads`, `lint`, `translation-status` under
+`storeshot://<workspace>/…`. Prompts: `new-locale-deck`,
+`locale-launch-checklist`, `aso-copy-review`, `screenshot-brief` (art
+direction for producing screenshots, e.g. via an image-gen MCP server).
+
+Outbound client (talk to any MCP stdio server, including this one):
+
+```bash
+bun run mcp:call --cmd bun src/mcp/server.ts --list tools
+bun run mcp:call --cmd bun src/mcp/server.ts --tool get_project --args '{"workspace":"/abs/path"}'
+```
+
+Same trust model as `/api/*`: localhost/stdio only, absolute workspace
+paths, no auth — do not bridge it to the network. Headless renders are a
+faithful rasterization (same geometry, copy fallback, and store folder
+codes as the Export dialog), not pixel-identical: connected-mode straddles
+split on crop like the browser, but canvas chrome (guides, placeholders)
+never bakes in, and Google Fonts download on first render with a system
+fallback + warning when offline.

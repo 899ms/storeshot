@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { LAYOUT_LABEL } from "@/lib/constants";
 import { pickText } from "@/lib/locale";
 import { screenDisplayName, screenIndexPrefix } from "@/lib/screen-title";
-import type { Device, ScreenBackground, Slide, Theme } from "@/lib/types";
+import type { CanvasSize, Device, FrameFinish, GlobalTextStyle, ScreenBackground, Slide, Theme } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DeckCanvas, SlideCanvas, getCanvas } from "./slide-canvas";
 
@@ -24,6 +24,10 @@ type Props = {
   headlineFont?: string;
   labelFont?: string;
   background?: ScreenBackground;
+  sizes?: Partial<Record<Device, CanvasSize>>;
+  frames?: Partial<Record<"phone" | "tablet", FrameFinish>>;
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   onSelect: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -44,6 +48,10 @@ function SlideThumbInner({
   headlineFont,
   labelFont,
   background,
+  sizes,
+  frames,
+  headlineText,
+  labelText,
   onSelect,
   onDelete,
   onDuplicate,
@@ -54,7 +62,7 @@ function SlideThumbInner({
     id: slide.id,
   });
 
-  const { cW, cH } = getCanvas(device);
+  const { cW, cH } = getCanvas(device, sizes);
   const aspect = cW / cH;
   const tileH = Math.max(34, Math.min(120, Math.round(THUMB_W / aspect)));
   const scale = THUMB_W / cW;
@@ -123,6 +131,10 @@ function SlideThumbInner({
                 headlineFont={headlineFont}
                 labelFont={labelFont}
                 background={background}
+                frames={frames}
+                sizes={sizes}
+                headlineText={headlineText}
+                labelText={labelText}
               />
             ) : (
               <SlideCanvas
@@ -134,6 +146,10 @@ function SlideThumbInner({
                 headlineFont={headlineFont}
                 labelFont={labelFont}
                 background={background}
+                frames={frames}
+                sizes={sizes}
+                headlineText={headlineText}
+                labelText={labelText}
               />
             )}
           </div>
@@ -208,6 +224,10 @@ export const SlideThumb = React.memo(SlideThumbInner, (prev, next) => {
     prev.connectedCanvas === next.connectedCanvas &&
     prev.headlineFont === next.headlineFont &&
     prev.labelFont === next.labelFont &&
-    prev.background === next.background
+    prev.background === next.background &&
+    prev.sizes === next.sizes &&
+    prev.frames === next.frames &&
+    prev.headlineText === next.headlineText &&
+    prev.labelText === next.labelText
   );
 });

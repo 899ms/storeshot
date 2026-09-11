@@ -1,4 +1,4 @@
-import type { CaptionTextStyle, Slide } from "./types";
+import type { CaptionTextStyle, GlobalTextStyle, Slide } from "./types";
 
 // Long-standing caption defaults (mirror slide-canvas renderCaption so old
 // projects resolve pixel-identically when no overrides are set).
@@ -7,6 +7,10 @@ export const DEFAULT_LABEL_WEIGHT = 600;
 export const DEFAULT_HEADLINE_SIZE_FACTOR = 0.092;
 export const DEFAULT_HEADLINE_WEIGHT = 700;
 
+// Bounds for global size factors (fraction of min(canvasW, canvasH)).
+export const MIN_SIZE_FACTOR = 0.005;
+export const MAX_SIZE_FACTOR = 0.3;
+
 export type ResolvedCaptionStyle = {
   fontSize: number;
   fontWeight: number;
@@ -14,35 +18,37 @@ export type ResolvedCaptionStyle = {
   color: string;
 };
 
-/** Resolve label typography: per-slide override wins, else the default. */
+/** Resolve label typography: per-slide override → global → builtin default. */
 export function resolveLabelStyle(
   slide: Pick<Slide, "labelStyle">,
   unit: number,
   defaultFamily: string,
   defaultColor: string,
+  global?: GlobalTextStyle,
 ): ResolvedCaptionStyle {
   const o = slide.labelStyle;
   return {
-    fontSize: o?.fontSize ?? unit * DEFAULT_LABEL_SIZE_FACTOR,
-    fontWeight: o?.fontWeight ?? DEFAULT_LABEL_WEIGHT,
+    fontSize: o?.fontSize ?? unit * (global?.sizeFactor ?? DEFAULT_LABEL_SIZE_FACTOR),
+    fontWeight: o?.fontWeight ?? global?.fontWeight ?? DEFAULT_LABEL_WEIGHT,
     fontFamily: o?.fontFamily ?? defaultFamily,
-    color: o?.color ?? defaultColor,
+    color: o?.color ?? global?.color ?? defaultColor,
   };
 }
 
-/** Resolve headline typography: per-slide override wins, else the default. */
+/** Resolve headline typography: per-slide override → global → builtin default. */
 export function resolveHeadlineStyle(
   slide: Pick<Slide, "headlineStyle">,
   unit: number,
   defaultFamily: string,
   defaultColor: string,
+  global?: GlobalTextStyle,
 ): ResolvedCaptionStyle {
   const o = slide.headlineStyle;
   return {
-    fontSize: o?.fontSize ?? unit * DEFAULT_HEADLINE_SIZE_FACTOR,
-    fontWeight: o?.fontWeight ?? DEFAULT_HEADLINE_WEIGHT,
+    fontSize: o?.fontSize ?? unit * (global?.sizeFactor ?? DEFAULT_HEADLINE_SIZE_FACTOR),
+    fontWeight: o?.fontWeight ?? global?.fontWeight ?? DEFAULT_HEADLINE_WEIGHT,
     fontFamily: o?.fontFamily ?? defaultFamily,
-    color: o?.color ?? defaultColor,
+    color: o?.color ?? global?.color ?? defaultColor,
   };
 }
 

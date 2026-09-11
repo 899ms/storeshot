@@ -2,10 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PROJECT_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
 import { DEFAULT_PROJECT, makeEmptyProject } from "./defaults";
+import { MAX_SIZE_FACTOR as MAX_TEXT_SIZE_FACTOR, MIN_SIZE_FACTOR as MIN_TEXT_SIZE_FACTOR } from "./caption-style";
 import { workspaceName } from "./workspaces";
 import { coerceLocalized } from "./locale";
 import { clearImageCache } from "./image-cache";
-import type { BackgroundStyle, Device, ElementTransform, ProjectState, ScreenBackground, Slide, TextElement } from "./types";
+import type { BackgroundStyle, CanvasSize, Device, ElementTransform, FrameFinish, GlobalTextStyle, ProjectState, ScreenBackground, Slide, TextElement } from "./types";
 
 const HISTORY_LIMIT = 50;
 // Coalesce rapid edits (typing, slider drags) into a single undo step.
@@ -95,6 +96,62 @@ function cleanTextElement(value: unknown): TextElement | undefined {
   };
 }
 
+// Sanitize per-device canvas size overrides. Out-of-range or partial values
+// fall back to built-in defaults (effectiveCanvas enforces the same bounds).
+function cleanCanvasSizes(value: unknown): Partial<Record<Device, CanvasSize>> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const cleaned: Partial<Record<Device, CanvasSize>> = {};
+  for (const device of ["phone", "tablet", "desktop"] as const) {
+    const entry = raw[device];
+    if (!entry || typeof entry !== "object") continue;
+    const { w, h } = entry as { w?: unknown; h?: unknown };
+    const cw = cleanNumber(w, 200, 5000);
+    const ch = cleanNumber(h, 200, 5000);
+    if (cw !== undefined && ch !== undefined) {
+      cleaned[device] = { w: Math.round(cw), h: Math.round(ch) };
+    }
+  }
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
+const FRAME_FINISHES: FrameFinish[] = ["titanium", "black", "white", "none"];
+
+// Sanitize mockup chassis finishes for Phone/Tablet.
+function cleanFrames(value: unknown): Partial<Record<"phone" | "tablet", FrameFinish>> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const cleaned: Partial<Record<"phone" | "tablet", FrameFinish>> = {};
+  for (const device of ["phone", "tablet"] as const) {
+    const finish = raw[device];
+    if (typeof finish === "string" && (FRAME_FINISHES as string[]).includes(finish)) {
+      cleaned[device] = finish as FrameFinish;
+    }
+  }
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
+// Sanitize project-wide Headline/Label defaults. Partial garbage falls back
+// field-by-field; fully empty results stay undefined (builtin behavior).
+function cleanGlobalTextStyle(value: unknown): GlobalTextStyle | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const cleaned: GlobalTextStyle = {};
+  if (typeof raw.fontWeight === "number" && Number.isFinite(raw.fontWeight)) {
+    cleaned.fontWeight = Math.min(900, Math.max(100, Math.round(raw.fontWeight / 100) * 100));
+  }
+  if (typeof raw.sizeFactor === "number" && Number.isFinite(raw.sizeFactor)) {
+    cleaned.sizeFactor = Math.min(MAX_TEXT_SIZE_FACTOR, Math.max(MIN_TEXT_SIZE_FACTOR, raw.sizeFactor));
+  }
+  if (typeof raw.color === "string") {
+    const hex = cleanHex(raw.color);
+    if (hex) cleaned.color = hex;
+  }
+  return cleaned.fontWeight !== undefined || cleaned.sizeFactor !== undefined || cleaned.color !== undefined
+    ? cleaned
+    : undefined;
+}
+
 // Migrate older projects into the current schema while keeping legacy decks
 // visually stable until they explicitly opt into connected canvas.
 function migrateSlide(slide: Slide): Slide {
@@ -129,15 +186,31 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
       ? parsed.themeId
       : DEFAULT_PROJECT.themeId;
   // Supported decks only — drop legacy decks for retired devices
-  // (android, android-7, …) instead of carrying them forward.
+  // (android, android-7, …) instead of carrying them forward. Legacy
+  // "iphone"/"ipad" deck keys migrate to "phone"/"tablet".
   const parsedDecks = parsed.slidesByDevice as Record<string, unknown> | undefined;
   const slidesByDevice: Record<string, Slide[]> = {};
-  for (const device of ["iphone", "ipad"] as const) {
-    const slides = parsedDecks?.[device];
-    if (Array.isArray(slides)) {
-      slidesByDevice[device] = (slides as Slide[]).map((slide) => migrateSlide(slide));
+  const deckSources: Record<string, string[]> = {
+    phone: ["phone", "iphone"],
+    tablet: ["tablet", "ipad"],
+    desktop: ["desktop"],
+  };
+  for (const device of ["phone", "tablet", "desktop"] as const) {
+    for (const key of deckSources[device]) {
+      const slides = parsedDecks?.[key];
+      if (Array.isArray(slides)) {
+        slidesByDevice[device] = (slides as Slide[]).map((slide) => migrateSlide(slide));
+        break;
+      }
     }
   }
+  const rawDevice = parsed.device as string | undefined;
+  const device: Device =
+    rawDevice === "tablet" || rawDevice === "ipad"
+      ? "tablet"
+      : rawDevice === "desktop"
+        ? "desktop"
+        : "phone";
   const merged: ProjectState = {
     ...DEFAULT_PROJECT,
     ...parsed,
@@ -145,7 +218,9 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
     themeId,
     connectedCanvas,
     background: cleanBackground(parsed.background) ?? { ...DEFAULT_PROJECT.background },
-    device: parsed.device === "ipad" || parsed.device === "iphone" ? parsed.device : "iphone",
+    device,
+    canvasSizes: cleanCanvasSizes(parsed.canvasSizes),
+    frames: cleanFrames(parsed.frames),
     slidesByDevice: {
       ...DEFAULT_PROJECT.slidesByDevice,
       ...slidesByDevice,
@@ -160,9 +235,16 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
   const extra = merged as unknown as Record<string, unknown>;
   if (extra.crossScreenMockupsByDevice && typeof extra.crossScreenMockupsByDevice === "object") {
     const cs = extra.crossScreenMockupsByDevice as Record<string, unknown>;
+    const pick = (keys: string[]) => {
+      for (const key of keys) {
+        if (Array.isArray(cs[key])) return cs[key];
+      }
+      return [];
+    };
     extra.crossScreenMockupsByDevice = {
-      iphone: Array.isArray(cs.iphone) ? cs.iphone : [],
-      ipad: Array.isArray(cs.ipad) ? cs.ipad : [],
+      phone: pick(["phone", "iphone"]),
+      tablet: pick(["tablet", "ipad"]),
+      desktop: pick(["desktop"]),
     };
   }
   // Clamp the active locale into the project's locale list so a stale
@@ -180,6 +262,10 @@ function mergeWithDefaults(parsed: Partial<ProjectState>): ProjectState {
   if (typeof merged.labelFont !== "string" || !merged.labelFont.trim()) {
     merged.labelFont = DEFAULT_PROJECT.labelFont;
   }
+  // Sanitize project-wide text defaults (Settings → Text). Garbage falls
+  // back to undefined = builtin behavior, so legacy projects render unchanged.
+  merged.headlineText = cleanGlobalTextStyle(parsed.headlineText);
+  merged.labelText = cleanGlobalTextStyle(parsed.labelText);
   return merged;
 }
 

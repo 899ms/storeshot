@@ -2,13 +2,13 @@ import type { StoreKind } from "./locale";
 
 export type ExportTarget = {
   id: string;
-  platform: "ios";
+  platform: "ios" | "mac";
   platformName: string;
   name: string;
   description: string;
   w: number;
   h: number;
-  category: "iphone" | "ipad";
+  category: "phone" | "tablet" | "desktop";
   subfolder: string;
   fastlaneDeviceName: string;
   badge?: string;
@@ -18,32 +18,47 @@ export type ExportTarget = {
 
 export const EXPORT_TARGETS: ExportTarget[] = [
   {
-    id: "ios-iphone-69",
+    id: "ios-phone-69",
     platform: "ios",
     platformName: "Apple App Store",
-    name: "iPhone 6.9\" (16 Pro Max / 15 Pro Max)",
+    name: "Phone 6.9\" (16 Pro Max / 15 Pro Max)",
     description: "1320 × 2868 · Required for App Store",
     w: 1320,
     h: 2868,
-    category: "iphone",
-    subfolder: "apple/iphone-6.9",
+    category: "phone",
+    subfolder: "apple/phone-6.9",
     fastlaneDeviceName: "iPhone 16 Pro Max",
     badge: "Required",
     recommended: true,
     defaultSelected: true,
   },
   {
-    id: "ios-ipad-13",
+    id: "ios-tablet-13",
     platform: "ios",
     platformName: "Apple App Store",
-    name: "iPad Pro 13\" / 12.9\"",
-    description: "2064 × 2752 · iPad Pro Display Size",
+    name: "Tablet Pro 13\" / 12.9\"",
+    description: "2064 × 2752 · Tablet Pro Display Size",
     w: 2064,
     h: 2752,
-    category: "ipad",
-    subfolder: "apple/ipad-13",
+    category: "tablet",
+    subfolder: "apple/tablet-13",
     fastlaneDeviceName: "iPad Pro (12.9-inch) (6th generation)",
-    badge: "iPad",
+    badge: "Tablet",
+    recommended: false,
+    defaultSelected: false,
+  },
+  {
+    id: "mac-desktop-2880",
+    platform: "mac",
+    platformName: "Mac App Store",
+    name: "Desktop (Mac App Store)",
+    description: "2880 × 1800 · Required for Mac App Store",
+    w: 2880,
+    h: 1800,
+    category: "desktop",
+    subfolder: "apple/desktop",
+    fastlaneDeviceName: "Desktop",
+    badge: "Required",
     recommended: false,
     defaultSelected: false,
   },
@@ -59,8 +74,16 @@ export type ExportConfig = {
   store: StoreKind;
 };
 
+const LEGACY_TARGET_IDS: Record<string, string> = {
+  "ios-iphone-69": "ios-phone-69",
+  "ios-ipad-13": "ios-tablet-13",
+};
+
 export function getExportTargetById(id: string): ExportTarget | undefined {
-  return EXPORT_TARGETS.find((t) => t.id === id);
+  return (
+    EXPORT_TARGETS.find((t) => t.id === id) ??
+    EXPORT_TARGETS.find((t) => t.id === LEGACY_TARGET_IDS[id])
+  );
 }
 
 export function buildExportZipPath(

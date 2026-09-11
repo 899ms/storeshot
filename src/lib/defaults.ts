@@ -22,7 +22,7 @@ function en(text: string): Record<string, string> {
   return { en: text };
 }
 
-export function makeStarterSlides(_device: Device = "iphone"): Slide[] {
+export function makeStarterSlides(_device: Device = "phone"): Slide[] {
   // Text-only starters — all imagery comes from the user via the screenshot
   // pickers and is stored in the workspace's `screenshots/` folder.
   return [
@@ -85,13 +85,14 @@ export const DEFAULT_PROJECT: ProjectState = {
   connectedCanvas: true,
   locales: ["en", "es"],
   locale: DEFAULT_LOCALE,
-  device: "iphone",
+  device: "phone",
   headlineFont: DEFAULT_HEADLINE_FONT,
   labelFont: DEFAULT_LABEL_FONT,
   background: randomMeshBackground(),
   slidesByDevice: {
-    iphone: makeStarterSlides("iphone"),
-    ipad: makeStarterSlides("ipad"),
+    phone: makeStarterSlides("phone"),
+    tablet: makeStarterSlides("tablet"),
+    desktop: makeStarterSlides("desktop"),
   },
 };
 
@@ -106,11 +107,11 @@ export function makeEmptyProject(): ProjectState {
     connectedCanvas: true,
     locales: ["en"],
     locale: "en",
-    device: "iphone",
+    device: "phone",
     headlineFont: DEFAULT_HEADLINE_FONT,
     labelFont: DEFAULT_LABEL_FONT,
     background: randomMeshBackground(),
-    slidesByDevice: { iphone: [], ipad: [] },
+    slidesByDevice: { phone: [], tablet: [], desktop: [] },
   };
 }
 
@@ -129,6 +130,6 @@ export function newSlide(layout: Slide["layout"] = "device-bottom"): Slide {
   };
 }
 
-export function detectPlatform(_device?: Device): "ios" {
-  return "ios";
+export function detectPlatform(device?: Device): "ios" | "mac" {
+  return device === "desktop" ? "mac" : "ios";
 }

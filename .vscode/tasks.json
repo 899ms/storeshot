@@ -8,7 +8,8 @@
       "isBackground": true,
       "presentation": {
         "reveal": "silent",
-        "panel": "dedicated"
+        "panel": "dedicated",
+        "close": true
       },
       "problemMatcher": {
         "pattern": {
@@ -50,6 +51,15 @@
         "isDefault": true
       },
       "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "kill dev server",
+      "type": "shell",
+      "command": "PIDS=$(lsof -ti:3000 2>/dev/null); if [ -n \"$PIDS\" ]; then echo \"$PIDS\" | xargs kill -9; fi; exit 0",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated"
+      }
     },
     {
       "type": "npm",

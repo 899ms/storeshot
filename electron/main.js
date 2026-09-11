@@ -9,7 +9,7 @@
 // Security posture: no nodeIntegration, contextIsolation on, sandbox on.
 // Renderer code is the existing Next app unchanged.
 
-const { app, BrowserWindow, dialog, ipcMain, nativeTheme, net, Notification, shell, utilityProcess } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme, net, Notification, powerSaveBlocker, shell, utilityProcess } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const updater = require("./updater");
@@ -19,6 +19,11 @@ const { readPrefs, updatePrefs, touchRecent } = require("./prefs");
 const APP_TITLE = "StoreShot";
 const DEV_URL = process.env.ELECTRON_START_URL || "http://localhost:3000";
 const SERVER_TIMEOUT_MS = 30000;
+// Dev server can take a while on first boot (Next compile); hot-reload
+// restarts also drop the port briefly. Wait longer up front, retry fast after.
+const DEV_TIMEOUT_MS = 120000;
+const DEV_RETRY_MS = 500;
+const DEV_MAX_RETRIES = 40;
 
 let mainWindow = null;
 let serverChild = null;
@@ -58,9 +63,8 @@ async function findFreePort() {
   });
 }
 
-async function waitForServer(port) {
-  const url = `http://127.0.0.1:${port}/`;
-  const deadline = Date.now() + SERVER_TIMEOUT_MS;
+async function waitForUrl(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
   // net.fetch bypasses proxies and respects Electron's net stack.
   while (Date.now() < deadline) {
     try {
@@ -71,7 +75,15 @@ async function waitForServer(port) {
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error(`Next server did not become ready on port ${port} within ${SERVER_TIMEOUT_MS}ms`);
+  throw new Error(`Server did not become ready at ${url} within ${timeoutMs}ms`);
+}
+
+async function waitForServer(port) {
+  try {
+    await waitForUrl(`http://127.0.0.1:${port}/`, SERVER_TIMEOUT_MS);
+  } catch {
+    throw new Error(`Next server did not become ready on port ${port} within ${SERVER_TIMEOUT_MS}ms`);
+  }
 }
 
 function startPackagedServer(port) {
@@ -111,7 +123,13 @@ function startPackagedServer(port) {
 }
 
 async function resolveBaseUrl() {
-  if (!app.isPackaged) return DEV_URL;
+  // Unpacked dev: wait for `next dev` instead of racing it. Covers both a
+  // cold start (Electron launched before the dev server) and hot-reload
+  // restarts where the port drops briefly.
+  if (!app.isPackaged) {
+    await waitForUrl(DEV_URL, DEV_TIMEOUT_MS);
+    return DEV_URL;
+  }
   serverPort = await findFreePort();
   serverChild = startPackagedServer(serverPort);
   await waitForServer(serverPort);
@@ -225,6 +243,11 @@ function createWindow(baseUrl) {
       nodeIntegration: false,
       sandbox: true,
       spellcheck: true,
+      // Exports rasterize in the renderer (html-to-image). Without this,
+      // Chromium throttles rAF/timers to ~1Hz the moment the window is
+      // occluded (another Space, minimized, behind other windows) and long
+      // exports stall. Unthrottled hidden rendering keeps them moving.
+      backgroundThrottling: false,
     },
     show: false,
   });
@@ -272,8 +295,28 @@ function createWindow(baseUrl) {
   attachSpellcheckMenu(mainWindow);
   attachDownloadHandling(mainWindow);
 
-  mainWindow.webContents.on("did-fail-load", (_e, code, desc, url) => {
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.__devRetries = 0;
+  });
+
+  mainWindow.webContents.on("did-fail-load", (_e, code, desc, url, _isMainFrame, _frameProcessId, _frameRoutingId) => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
+    // Dev hot-reload restarts drop the port briefly (ERR_CONNECTION_REFUSED
+    // -102, RESET -101, ABORTED -3 on navigation races). Retry silently and
+    // only bother the user if the dev server stays down.
+    const transientDevFailure =
+      !app.isPackaged && (code === -102 || code === -101 || code === -3);
+    if (transientDevFailure) {
+      const win = mainWindow;
+      win.__devRetries = (win.__devRetries || 0) + 1;
+      if (win.__devRetries <= DEV_MAX_RETRIES) {
+        setTimeout(() => {
+          if (win && !win.isDestroyed()) win.webContents.reload();
+        }, DEV_RETRY_MS);
+        return;
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.__devRetries = 0;
     dialog
       .showMessageBox(mainWindow, {
         type: "error",
@@ -475,6 +518,36 @@ function setDockProgress(value) {
   }
 }
 
+// --- Background exports: hold macOS awake while renders run (N6b) ---------
+// Export rasterization lives in the renderer. When the window goes occluded
+// (another Space, minimized) macOS App Nap can suspend the app's timers and
+// stall a long bundle mid-flight. A prevent-app-suspension blocker — held
+// only between the first export-progress event and export-done — keeps the
+// export moving while the user works elsewhere. Display may still sleep;
+// only suspension is blocked.
+let exportBlockerId = null;
+
+function startExportBlocker() {
+  if (exportBlockerId !== null) return;
+  try {
+    exportBlockerId = powerSaveBlocker.start("prevent-app-suspension");
+  } catch {
+    exportBlockerId = null;
+  }
+}
+
+function stopExportBlocker() {
+  if (exportBlockerId === null) return;
+  try {
+    if (powerSaveBlocker.isStarted(exportBlockerId)) {
+      powerSaveBlocker.stop(exportBlockerId);
+    }
+  } catch {
+    // Best-effort only.
+  }
+  exportBlockerId = null;
+}
+
 // --- Native export progress + completion notifications ----------------------
 // macOS banners cannot host a progress bar, so progress goes to the Dock
 // icon (0..1 determinate, >1 indeterminate, <0 clears) and completion
@@ -482,12 +555,18 @@ function setDockProgress(value) {
 // never waits on these.
 ipcMain.on("storeshot:export-progress", (_event, value) => {
   if (typeof value !== "number" || Number.isNaN(value)) return;
+  // Any real progress (determinate 0..1 or indeterminate >1) means renders
+  // are running — hold App Nap off. -1 is just a progress-bar clear.
+  if (value >= 0) startExportBlocker();
   // Clamp determinate values; anything above 1 is indeterminate mode.
   const clamped = value < 0 ? -1 : Math.min(value, 2);
   setDockProgress(clamped);
 });
 
 ipcMain.on("storeshot:export-done", (_event, payload) => {
+  // Every export path (complete, partial, failed, stopped) ends here — the
+  // blocker must release even when the message itself is unusable.
+  stopExportBlocker();
   setDockProgress(-1);
   const title = payload && typeof payload.title === "string" ? payload.title : "";
   const body = payload && typeof payload.body === "string" ? payload.body : "";
@@ -513,6 +592,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   try {
+    stopExportBlocker();
     if (serverChild) serverChild.kill();
   } catch {
     // Already gone — nothing to stop.

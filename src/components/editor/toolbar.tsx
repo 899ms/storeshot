@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Download, Keyboard, Languages, Loader2, MoreHorizontal, Plus, Redo, RotateCcw, Save, Settings, Smartphone, Sparkles, Square, Tablet, Undo, UnfoldHorizontal } from "lucide-react";
+import { Download, Keyboard, Languages, Loader2, Monitor, MoreHorizontal, Plus, Redo, RotateCcw, Save, Settings, Smartphone, Sparkles, Square, Tablet, Undo, UnfoldHorizontal } from "lucide-react";
 import { isMacShell } from "@/lib/native";
 import { Button } from "@/components/ui/button";
 import {
@@ -74,14 +74,14 @@ const ADD_LOCALE_VALUE = "__add_locale__";
 export function Toolbar(props: Props) {
   const [resetOpen, setResetOpen] = React.useState(false);
   const showLocale = props.locales.length > 1;
-  const deviceLabel = DEVICE_LABEL[props.device] ?? "iPhone";
+  const deviceLabel = DEVICE_LABEL[props.device] ?? "Phone";
 
   // Inside the macOS shell the window uses hiddenInset traffic lights, so the
   // bar clears them on the left and doubles as the window drag handle.
   const shellBar = isMacShell();
   return (
     <div
-      className={`flex h-12 shrink-0 items-center gap-1.5 overflow-hidden border-b border-figma-divider bg-figma-panel px-2 text-[12px] text-figma-text backdrop-blur${shellBar ? " electron-shell-bar pl-[76px]" : ""}`}
+      className={`relative flex h-12 shrink-0 items-center gap-1.5 overflow-hidden border-b border-figma-divider bg-figma-panel px-2 text-[12px] text-figma-text backdrop-blur${shellBar ? " electron-shell-bar pl-[76px]" : ""}`}
     >
       {SHOW_APP_RENAME ? (
         <div className="flex min-w-0 shrink-0 items-center gap-2">
@@ -97,36 +97,49 @@ export function Toolbar(props: Props) {
         </div>
       ) : null}
 
-      {/* Center — canvas context */}
-      <div className="flex min-w-0 flex-1 items-center justify-center">
-        <div className="flex min-w-0 items-center gap-0.5 rounded-md border border-figma-divider bg-figma-hover/60 p-0.5">
+      {/* Center — canvas context, dead-centered on the bar */}
+      <div className="pointer-events-none absolute left-1/2 top-1/2 flex min-w-0 max-w-[58vw] -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+        <div className="pointer-events-auto flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-md border border-figma-divider bg-figma-hover/60 p-0.5">
           {props.setDevice ? (
             <div role="radiogroup" aria-label="Device" className="flex shrink-0 items-center gap-0.5">
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className={`h-8 gap-1 rounded px-2 text-[12px]${props.device === "iphone" ? " bg-figma-panel text-figma-text shadow-sm" : " text-figma-secondary"}`}
-                onClick={() => props.setDevice?.("iphone")}
-                aria-pressed={props.device === "iphone"}
-                title='iPhone 6.9" deck'
+                size="icon"
+                className={`h-8 w-8 rounded${props.device === "phone" ? " bg-figma-panel text-figma-accent shadow-sm" : " text-figma-secondary"}`}
+                onClick={() => props.setDevice?.("phone")}
+                aria-pressed={props.device === "phone"}
+                aria-label="Phone"
+                title="Phone deck"
                 disabled={props.busy}
               >
-                <Smartphone className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">iPhone</span>
+                <Smartphone className="h-4 w-4" />
               </Button>
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className={`h-8 gap-1 rounded px-2 text-[12px]${props.device === "ipad" ? " bg-figma-panel text-figma-text shadow-sm" : " text-figma-secondary"}`}
-                onClick={() => props.setDevice?.("ipad")}
-                aria-pressed={props.device === "ipad"}
-                title='iPad 13" deck'
+                size="icon"
+                className={`h-8 w-8 rounded${props.device === "tablet" ? " bg-figma-panel text-figma-accent shadow-sm" : " text-figma-secondary"}`}
+                onClick={() => props.setDevice?.("tablet")}
+                aria-pressed={props.device === "tablet"}
+                aria-label="Tablet"
+                title="Tablet deck"
                 disabled={props.busy}
               >
-                <Tablet className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">iPad</span>
+                <Tablet className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={`h-8 w-8 rounded${props.device === "desktop" ? " bg-figma-panel text-figma-accent shadow-sm" : " text-figma-secondary"}`}
+                onClick={() => props.setDevice?.("desktop")}
+                aria-pressed={props.device === "desktop"}
+                aria-label="Desktop"
+                title="Desktop deck (Mac App Store 2880 × 1800)"
+                disabled={props.busy}
+              >
+                <Monitor className="h-4 w-4" />
               </Button>
             </div>
           ) : null}

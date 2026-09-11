@@ -10,6 +10,7 @@ import {
   Globe,
   Layers,
   Play,
+  Monitor,
   Smartphone,
   Sparkles,
   Tablet,
@@ -344,7 +345,7 @@ export function ExportDialog({
             </Alert>
           )}
 
-          {/* 1. Target Devices (iPhone 6.9" & iPad Pro 13") */}
+          {/* 1. Target Devices (Phone 6.9", Tablet Pro 13" & Desktop) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -355,7 +356,8 @@ export function ExportDialog({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {EXPORT_TARGETS.map((target) => {
                 const isChecked = selectedTargetIds.includes(target.id);
-                const IconComponent = target.category === "ipad" ? Tablet : Smartphone;
+                const IconComponent =
+                  target.category === "tablet" ? Tablet : target.category === "desktop" ? Monitor : Smartphone;
                 return (
                   <Card
                     key={target.id}
@@ -591,7 +593,7 @@ export function ExportDialog({
                       Standard Store Layout
                     </span>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      Organized as <code>apple/iphone-6.9/{exampleFolder}/01.png</code>
+                      Organized as <code>apple/phone-6.9/{exampleFolder}/01.png</code>
                     </p>
                   </div>
                 </label>

@@ -1,4 +1,4 @@
-export type Device = "iphone" | "ipad";
+export type Device = "phone" | "tablet" | "desktop";
 
 // Layouts the editor can render. Vary across slides for visual rhythm.
 export type SlideLayout =
@@ -61,6 +61,23 @@ export type TextElement = {
   color?: string;
   align?: "left" | "center" | "right";
 };
+
+// Mockup chassis finish for Phone/Tablet frames. "none" renders the
+// screenshot edge-to-edge with no bezel. Desktop is always frameless.
+export type FrameFinish = "titanium" | "black" | "white" | "none";
+
+// Project-wide caption defaults for one text role (headline or label).
+// Every field is optional; absent fields fall back to built-ins. Family is
+// NOT stored here — ProjectState.headlineFont/labelFont remain the source.
+export type GlobalTextStyle = {
+  fontWeight?: number;
+  /** Size as a factor of min(canvasW, canvasH). Absent = builtin factor. */
+  sizeFactor?: number;
+  /** Explicit hex color. Absent = Auto (theme accent for label, fg for headline). */
+  color?: string;
+};
+
+export type CanvasSize = { w: number; h: number };
 
 // Per-slide typographic overrides for the built-in caption (label +
 // headline). Every field is optional; the renderer falls back to the
@@ -129,7 +146,17 @@ export type ProjectState = {
   // Nunito, the small label above it and overlay text elements to Inter.
   headlineFont: string;
   labelFont: string;
+  // Project-wide Headline/Label defaults (weight, size factor, color).
+  // Absent = builtin defaults. Edited in Settings → Text.
+  headlineText?: GlobalTextStyle;
+  labelText?: GlobalTextStyle;
   // Default screen background. Screens can override via Slide.background.
   background: ScreenBackground;
+  // Per-device canvas size overrides (design + export resolution). Absent =
+  // built-in CANVAS defaults. Edited in Settings → Devices.
+  canvasSizes?: Partial<Record<Device, CanvasSize>>;
+  // Mockup chassis finishes for Phone/Tablet. Absent = titanium. Desktop is
+  // always frameless. Edited in Settings → Devices.
+  frames?: Partial<Record<"phone" | "tablet", FrameFinish>>;
   appIcon?: string;    // workspace-relative path (e.g. uploads/app-icon.png) or absolute /…
 };

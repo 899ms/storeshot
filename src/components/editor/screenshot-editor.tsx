@@ -309,7 +309,7 @@ export function ScreenshotEditor() {
     }
     for (const bg of backgroundImagePaths(state.background)) paths.add(bg);
     // Preload locale variants for the current device only. Preloading every
-    // device's slides fetched URLs that may not exist (e.g. empty iPad asset
+    // device's slides fetched URLs that may not exist (e.g. empty tablet asset
     // folders) and spammed the console with 404s for locales/devices the user
     // never selected.
     const deviceSlides: Slide[] = state.slidesByDevice[state.device] || [];
@@ -709,7 +709,7 @@ export function ScreenshotEditor() {
   const handleAddTextElement = React.useCallback(() => {
     const slide = activeSlide;
     if (!slide || exporting) return;
-    const { cW, cH } = getCanvas(state.device);
+    const { cW, cH } = getCanvas(state.device, state.canvasSizes);
     const id = nid();
     const existingZ = [
       ...(Object.keys(slide.transforms || {}).map(
@@ -739,7 +739,7 @@ export function ScreenshotEditor() {
       ],
     });
     setSelectedElement({ slideId: slide.id, elementId: toTextElementId(id) });
-  }, [activeSlide, exporting, patchSlide, state.device, state.locale]);
+  }, [activeSlide, exporting, patchSlide, state.device, state.locale, state.canvasSizes]);
 
   const renameSlide = React.useCallback(
     (slideId: string, name: string) => {
@@ -869,6 +869,20 @@ export function ScreenshotEditor() {
     toast.info("Stopping export...");
   }, []);
 
+  // Trigger a blob download. In the Electron shell the download pauses for
+  // the native save dialog, so the blob URL must outlive it: revoking after
+  // a few seconds aborts the download mid-flight and leaves only Chromium's
+  // `.com.github.Electron.*` temp file behind instead of the real zip.
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    // Web downloads start immediately; the shell can wait on user input.
+    setTimeout(() => URL.revokeObjectURL(url), isShell() ? 10 * 60 * 1000 : 5000);
+  }
+
   async function exportWithConfig(config: ExportConfig) {
     if (!currentSlides.length) {
       toast.error("No screens to export");
@@ -908,7 +922,7 @@ export function ScreenshotEditor() {
 
     stopExportRef.current = false;
     // Preload only the selected slides × selected locales so unselected
-    // assets (e.g. missing iPad files) are never fetched during export.
+    // assets (e.g. missing tablet files) are never fetched during export.
     const exportPaths: string[] = [];
     if (state.appIcon) {
       exportPaths.push(
@@ -951,7 +965,7 @@ export function ScreenshotEditor() {
     ]);
     await fontsReadyWithTimeout();
 
-    const { cW, cH } = getCanvas(state.device);
+    const { cW, cH } = getCanvas(state.device, state.canvasSizes);
     const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
     // Every (locale × target × screen) combination must end up in the zip.
@@ -1069,12 +1083,7 @@ export function ScreenshotEditor() {
       if (okCount > 0) {
         try {
           const blob = await zip.generateAsync({ type: "blob" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `${slugify(state.appName)}-partial-${stamp()}.zip`;
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
+          downloadBlob(blob, `${slugify(state.appName)}-partial-${stamp()}.zip`);
           toast.info(`Export stopped. Saved partial bundle (${okCount} PNGs).`);
         } catch {
           toast.info("Export stopped.");
@@ -1089,16 +1098,14 @@ export function ScreenshotEditor() {
     if (okCount > 0) {
       try {
         const blob = await zip.generateAsync({ type: "blob" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
         // A bundle missing any unit is named -partial- so it can never be
         // mistaken for a complete export.
-        a.download = failed === 0
-          ? `${slugify(state.appName)}-screenshots-${config.folderPreset}-${stamp()}.zip`
-          : `${slugify(state.appName)}-partial-${stamp()}.zip`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        downloadBlob(
+          blob,
+          failed === 0
+            ? `${slugify(state.appName)}-screenshots-${config.folderPreset}-${stamp()}.zip`
+            : `${slugify(state.appName)}-partial-${stamp()}.zip`,
+        );
       } catch (e) {
         toast.error("Couldn't bundle export");
         reportError("export", "Couldn't bundle export", e instanceof Error ? e.message : String(e));
@@ -1151,7 +1158,7 @@ export function ScreenshotEditor() {
       return;
     }
 
-    const sizes = getExportSizes(state.device);
+    const sizes = getExportSizes(state.device, state.canvasSizes);
     if (!sizes.length) {
       toast.error("Nothing to export");
       return;
@@ -1188,11 +1195,13 @@ export function ScreenshotEditor() {
     ]);
     await fontsReadyWithTimeout();
 
-    const { cW, cH } = getCanvas(state.device);
+    const { cW, cH } = getCanvas(state.device, state.canvasSizes);
     const platform = detectPlatform(state.device);
     const el = exportRef.current;
     if (!el) {
       toast.error("Render target missing");
+      reportError("export", `Single screen export failed (screen ${idx + 1})`, "Render target missing");
+      notifyExportDone({ title: "Export failed", body: "Render target missing." });
       setExporting(null);
       clearExportProgress();
       setExportLocaleOverride(null);
@@ -1229,13 +1238,11 @@ export function ScreenshotEditor() {
           zip.file(filename, base64, { base64: true });
         }
         const blob = await zip.generateAsync({ type: "blob" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
         const num = String(idx + 1).padStart(2, "0");
-        a.download = `${slugify(state.appName)}-${platform}-${state.device}-${num}-${state.locale}.zip`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        downloadBlob(
+          blob,
+          `${slugify(state.appName)}-${platform}-${state.device}-${num}-${titleSlug}-${state.locale}.zip`,
+        );
         toast.success(`Exported screen ${idx + 1} (${sizes.length} sizes)`, {
           ...(isShell()
             ? { action: { label: "Reveal in Finder", onClick: () => revealLastExport() } }
@@ -1339,7 +1346,7 @@ export function ScreenshotEditor() {
     );
   }
 
-  const { cW, cH } = getCanvas(state.device);
+  const { cW, cH } = getCanvas(state.device, state.canvasSizes);
   const busy = !!exporting;
 
   return (
@@ -1372,12 +1379,12 @@ export function ScreenshotEditor() {
         onResetAll={() => {
           reset();
           setActiveSlideId(null);
-          toast.success(`Reset ${DEVICE_LABEL[state.device] ?? "iPhone"} screens to defaults`);
+          toast.success(`Reset ${DEVICE_LABEL[state.device] ?? "Phone"} screens to defaults`);
         }}
         onResetDevice={() => {
           resetDevice(state.device);
           setActiveSlideId(null);
-          toast.success(`Reset ${DEVICE_LABEL[state.device] ?? "iPhone"} screens to defaults`);
+          toast.success(`Reset ${DEVICE_LABEL[state.device] ?? "Phone"} screens to defaults`);
         }}
         exporting={exporting}
         saving={saving}
@@ -1401,6 +1408,10 @@ export function ScreenshotEditor() {
         currentLocale={state.locale}
         headlineFont={state.headlineFont}
         labelFont={state.labelFont}
+        headlineText={state.headlineText}
+        labelText={state.labelText}
+        headlineAutoColor={theme.fg}
+        labelAutoColor={theme.accent}
         background={state.background}
         disabled={busy}
         initialTab={settingsTab}
@@ -1424,7 +1435,28 @@ export function ScreenshotEditor() {
         }
         onHeadlineFontChange={(family) => setState((p) => ({ ...p, headlineFont: family }))}
         onLabelFontChange={(family) => setState((p) => ({ ...p, labelFont: family }))}
+        onHeadlineTextChange={(headlineText) => setState((p) => ({ ...p, headlineText }))}
+        onLabelTextChange={(labelText) => setState((p) => ({ ...p, labelText }))}
         onBackgroundChange={(background) => setState((p) => ({ ...p, background }))}
+        canvasSizes={state.canvasSizes}
+        frames={state.frames}
+        onCanvasSizeChange={(device, size) =>
+          setState((p) => ({ ...p, canvasSizes: { ...p.canvasSizes, [device]: size } }))
+        }
+        onResetCanvasSize={(device) =>
+          setState((p) => {
+            if (!p.canvasSizes?.[device]) return p;
+            const canvasSizes = { ...p.canvasSizes };
+            delete canvasSizes[device];
+            return {
+              ...p,
+              canvasSizes: Object.keys(canvasSizes).length > 0 ? canvasSizes : undefined,
+            };
+          })
+        }
+        onFrameChange={(device, finish) =>
+          setState((p) => ({ ...p, frames: { ...p.frames, [device]: finish } }))
+        }
         onSelectLocale={(locale) => setState((p) => ({ ...p, locale }))}
       />
 
@@ -1516,6 +1548,10 @@ export function ScreenshotEditor() {
             headlineFont={state.headlineFont}
             labelFont={state.labelFont}
             background={state.background}
+            sizes={state.canvasSizes}
+            frames={state.frames}
+            headlineText={state.headlineText}
+            labelText={state.labelText}
             disabled={busy}
             onReorder={reorderSlides}
             onSelect={setActiveSlideId}
@@ -1541,6 +1577,11 @@ export function ScreenshotEditor() {
               headlineFont={state.headlineFont}
               labelFont={state.labelFont}
               background={state.background}
+              workspaceKey={workspace}
+              sizes={state.canvasSizes}
+              frames={state.frames}
+              headlineText={state.headlineText}
+              labelText={state.labelText}
               onActiveSlideChange={setActiveSlideId}
               onLabelChange={handlePreviewLabel}
               onHeadlineChange={handlePreviewHeadline}
@@ -1576,7 +1617,7 @@ export function ScreenshotEditor() {
               <p className="max-w-sm text-xs">
                 {workspace
                   ? "Nothing has been added here yet — your screens, uploads, and project file live in this workspace's screenshots/ folder. Add Your First Screen to get started."
-                  : "Add a screen on the left to get started."}
+                  : "Add a Screen on the left to get started."}
               </p>
               <Button
                 type="button"
@@ -1601,6 +1642,9 @@ export function ScreenshotEditor() {
               exportLabel={`Export - ${((activeSlide.name ?? "").trim() || "Untitled").slice(0, 24)} - ${state.locale.toUpperCase()}`}
               headlineFont={state.headlineFont}
               labelFont={state.labelFont}
+              canvasSizes={state.canvasSizes}
+              headlineText={state.headlineText}
+              labelText={state.labelText}
               selectedElementId={
                 selectedElement && selectedElement.slideId === activeSlide.id
                   ? selectedElement.elementId
@@ -1687,6 +1731,10 @@ export function ScreenshotEditor() {
                 headlineFont={state.headlineFont}
                 labelFont={state.labelFont}
                 background={state.background}
+                frames={state.frames}
+                sizes={state.canvasSizes}
+                headlineText={state.headlineText}
+                labelText={state.labelText}
                 hideEmpty
               />
             </div>

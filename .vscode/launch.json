@@ -12,6 +12,7 @@
       },
       "console": "integratedTerminal",
       "preLaunchTask": "dev server (background)",
+      "postDebugTask": "kill dev server",
       "restart": false
     },
     {
@@ -28,6 +29,7 @@
       "name": "StoreShot: Electron (full debug)",
       "configurations": ["StoreShot: Electron Main (dev)", "StoreShot: Electron Renderer (attach)"],
       "preLaunchTask": "dev server (background)",
+      "postDebugTask": "kill dev server",
       "stopAll": true
     }
   ]
