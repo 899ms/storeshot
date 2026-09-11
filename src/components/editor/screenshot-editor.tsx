@@ -1255,7 +1255,7 @@ export function ScreenshotEditor() {
   const busy = !!exporting;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
+    <div className="flex h-screen flex-col overflow-hidden bg-figma-canvas text-figma-text">
       <Toaster position="bottom-center" richColors closeButton />
       <Toolbar
         appName={state.appName}
@@ -1407,7 +1407,7 @@ export function ScreenshotEditor() {
           </div>
         ) : (
         <>
-        <aside className="md:w-[264px] w-full shrink-0 border-r bg-background md:max-h-none max-h-64 overflow-hidden">
+        <aside className="md:w-[240px] w-full shrink-0 border-r border-figma-divider bg-figma-panel md:max-h-none max-h-64 overflow-hidden">
           <Sidebar
             slides={currentSlides}
             activeId={activeSlide?.id || null}
@@ -1469,7 +1469,7 @@ export function ScreenshotEditor() {
           )}
         </main>
 
-        <aside className="md:w-[320px] w-full shrink-0 border-l bg-background md:max-h-none max-h-96 overflow-hidden">
+        <aside className="md:w-[280px] w-full shrink-0 border-l border-figma-divider bg-figma-panel md:max-h-none max-h-96 overflow-hidden">
           {activeSlide ? (
             <Inspector
               slide={activeSlide}
@@ -1503,17 +1503,17 @@ export function ScreenshotEditor() {
         )}
       </div>
 
-      <footer className="flex h-7 shrink-0 items-center gap-2 overflow-hidden border-t bg-background px-3 text-[11px] text-muted-foreground">
-        <span className="min-w-0 truncate font-medium">
+      <footer className="flex h-7 shrink-0 items-center gap-2 overflow-hidden border-t border-figma-divider bg-figma-panel px-3 text-[11px] text-figma-secondary">
+        <span className="min-w-0 truncate font-medium text-figma-text">
           {workspace ? workspaceName(workspace) : "No workspace"}
         </span>
-        <span aria-hidden className="shrink-0 text-border">|</span>
+        <span aria-hidden className="shrink-0 text-figma-divider">|</span>
         <span className="shrink-0 tabular-nums">
           {currentSlides.length} screen{currentSlides.length === 1 ? "" : "s"}
         </span>
-        <span aria-hidden className="shrink-0 text-border">|</span>
+        <span aria-hidden className="shrink-0 text-figma-divider">|</span>
         <span className="shrink-0 tabular-nums">{state.locales.length} locale{state.locales.length === 1 ? "" : "s"}</span>
-        <span aria-hidden className="shrink-0 text-border">|</span>
+        <span aria-hidden className="shrink-0 text-figma-divider">|</span>
         <span className="shrink-0 tabular-nums">{cW}×{cH}</span>
         <span className="ml-auto hidden shrink-0 gap-3 md:flex">
           <span title="Save now">⌘S Save</span>

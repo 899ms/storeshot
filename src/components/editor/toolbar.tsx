@@ -80,7 +80,7 @@ export function Toolbar(props: Props) {
   const shellBar = isMacShell();
   return (
     <div
-      className={`flex h-12 shrink-0 items-center gap-2 overflow-hidden border-b bg-background/80 px-3 backdrop-blur${shellBar ? " electron-shell-bar pl-[76px]" : ""}`}
+      className={`flex h-12 shrink-0 items-center gap-1.5 overflow-hidden border-b border-figma-divider bg-figma-panel px-2 text-[12px] text-figma-text backdrop-blur${shellBar ? " electron-shell-bar pl-[76px]" : ""}`}
     >
       {SHOW_APP_RENAME ? (
         <div className="flex min-w-0 shrink-0 items-center gap-2">
@@ -98,14 +98,14 @@ export function Toolbar(props: Props) {
 
       {/* Center — canvas context */}
       <div className="flex min-w-0 flex-1 items-center justify-center">
-        <div className="flex min-w-0 items-center gap-1 rounded-lg bg-muted/60 p-1">
+        <div className="flex min-w-0 items-center gap-0.5 rounded-md border border-figma-divider bg-figma-hover/60 p-0.5">
           {props.setDevice ? (
             <div role="radiogroup" aria-label="Device" className="flex shrink-0 items-center gap-0.5">
               <Button
                 type="button"
-                variant={props.device === "iphone" ? "secondary" : "ghost"}
+                variant="ghost"
                 size="sm"
-                className={`h-7 gap-1 px-2 text-xs${props.device === "iphone" ? " bg-background shadow-sm" : ""}`}
+                className={`h-8 gap-1 rounded px-2 text-[12px]${props.device === "iphone" ? " bg-figma-panel text-figma-text shadow-sm" : " text-figma-secondary"}`}
                 onClick={() => props.setDevice?.("iphone")}
                 aria-pressed={props.device === "iphone"}
                 title='iPhone 6.9" deck'
@@ -116,9 +116,9 @@ export function Toolbar(props: Props) {
               </Button>
               <Button
                 type="button"
-                variant={props.device === "ipad" ? "secondary" : "ghost"}
+                variant="ghost"
                 size="sm"
-                className={`h-7 gap-1 px-2 text-xs${props.device === "ipad" ? " bg-background shadow-sm" : ""}`}
+                className={`h-8 gap-1 rounded px-2 text-[12px]${props.device === "ipad" ? " bg-figma-panel text-figma-text shadow-sm" : " text-figma-secondary"}`}
                 onClick={() => props.setDevice?.("ipad")}
                 aria-pressed={props.device === "ipad"}
                 title='iPad 13" deck'
@@ -129,12 +129,12 @@ export function Toolbar(props: Props) {
               </Button>
             </div>
           ) : null}
-          {props.setDevice ? <Separator orientation="vertical" className="h-5 shrink-0" /> : null}
+          {props.setDevice ? <Separator orientation="vertical" className="h-5 shrink-0 bg-figma-divider" /> : null}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className={`h-7 shrink-0 gap-1 px-2 text-xs${props.connectedCanvas ? " bg-background shadow-sm" : ""}`}
+            className={`h-8 shrink-0 gap-1 rounded px-2 text-[12px]${props.connectedCanvas ? " bg-figma-panel text-figma-text shadow-sm" : " text-figma-secondary"}`}
             onClick={() => props.setConnectedCanvas(!props.connectedCanvas)}
             aria-pressed={props.connectedCanvas}
             title={
@@ -147,7 +147,7 @@ export function Toolbar(props: Props) {
             <UnfoldHorizontal className="h-3.5 w-3.5" />
             <span className="hidden md:inline">{props.connectedCanvas ? "Connected" : "Isolated"}</span>
           </Button>
-          <Separator orientation="vertical" className="h-5 shrink-0" />
+          <Separator orientation="vertical" className="h-5 shrink-0 bg-figma-divider" />
 
           <Select
             value={props.locale}
@@ -160,7 +160,7 @@ export function Toolbar(props: Props) {
             }}
             disabled={props.busy}
           >
-            <SelectTrigger className="h-7 w-28 border-0 bg-transparent text-xs shadow-none focus:ring-0 lg:w-36" aria-label="Language">
+            <SelectTrigger className="h-8 w-28 border-0 bg-transparent text-[12px] text-figma-text shadow-none focus:ring-1 focus:ring-figma-accent lg:w-36" aria-label="Language">
               <SelectValue placeholder="Language">
                 {getLocaleFlag(props.locale)} {getLocaleLabel(props.locale)}
               </SelectValue>
@@ -187,14 +187,14 @@ export function Toolbar(props: Props) {
       </span>
 
       {/* Right — actions */}
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex shrink-0 items-center gap-0.5">
         {props.onUndo || props.onRedo ? (
           <>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="hidden h-9 w-9 sm:inline-flex"
+              className="hidden h-8 w-8 rounded-md text-figma-secondary hover:text-figma-text sm:inline-flex"
               onClick={props.onUndo}
               title="Undo (Cmd/Ctrl+Z)"
               aria-label="Undo"
@@ -206,7 +206,7 @@ export function Toolbar(props: Props) {
               type="button"
               variant="ghost"
               size="icon"
-              className="hidden h-9 w-9 sm:inline-flex"
+              className="hidden h-8 w-8 rounded-md text-figma-secondary hover:text-figma-text sm:inline-flex"
               onClick={props.onRedo}
               title="Redo (Cmd/Ctrl+Shift+Z)"
               aria-label="Redo"
@@ -214,14 +214,14 @@ export function Toolbar(props: Props) {
             >
               <Redo className="h-4 w-4" />
             </Button>
-            <Separator orientation="vertical" className="hidden h-5 sm:block" />
+            <Separator orientation="vertical" className="hidden h-5 bg-figma-divider sm:block" />
           </>
         ) : null}
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="h-9 w-9"
+          className="h-8 w-8 rounded-md text-figma-secondary hover:text-figma-text"
           onClick={props.onSave}
           title="Save now (Cmd/Ctrl+S)"
           aria-label="Save now"
@@ -233,12 +233,12 @@ export function Toolbar(props: Props) {
             <Save className="h-4 w-4" />
           )}
         </Button>
-        <Separator orientation="vertical" className="h-5" />
+        <Separator orientation="vertical" className="h-5 bg-figma-divider" />
         <ThemeToggle disabled={props.busy} />
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9"
+          className="h-8 w-8 rounded-md text-figma-secondary hover:text-figma-text"
           onClick={props.onOpenSettings}
           title="Settings (providers, model, languages)"
           aria-label="Settings"
@@ -251,7 +251,7 @@ export function Toolbar(props: Props) {
               type="button"
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-8 w-8 rounded-md text-figma-secondary hover:text-figma-text"
               title="More actions (translate, reset)"
               aria-label="More actions"
               disabled={props.busy}
@@ -313,7 +313,7 @@ export function Toolbar(props: Props) {
             onClick={props.onStopExport}
             variant="destructive"
             size="sm"
-            className="h-9 gap-1.5 px-3 text-xs font-semibold"
+            className="h-8 gap-1.5 rounded-md px-3 text-[12px] font-semibold"
             title="Stop export process"
           >
             <Square className="h-3.5 w-3.5 fill-current" />
@@ -321,16 +321,15 @@ export function Toolbar(props: Props) {
           </Button>
         ) : (
           <>
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation="vertical" className="h-5 bg-figma-divider" />
             <Button
               onClick={props.onExport}
-              variant="ghost"
               size="sm"
-              className="h-9 gap-1.5 px-3 text-xs font-medium"
+              className="h-8 gap-1.5 rounded-md bg-figma-accent px-3.5 text-[12px] font-semibold text-white shadow-sm hover:bg-figma-accent/90"
               title={`Export ${deviceLabel} App Store screenshot bundle as zip (Cmd/Ctrl+E)`}
             >
               <Download className="h-4 w-4" />
-              Export
+              Share
             </Button>
           </>
         )}

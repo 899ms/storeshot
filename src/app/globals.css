@@ -22,8 +22,17 @@
     --destructive-foreground: 240 14% 98%;
     --border: 240 9% 90%;
     --input: 240 9% 90%;
-    --ring: 240 6% 62%;
-    --radius: 0.625rem;
+    --ring: 211 100% 52%;
+    --radius: 0.375rem;
+    /* Figma chrome tokens (light): white panels, gray canvas, blue accent */
+    --figma-panel: 0 0% 100%;
+    --figma-canvas: 0 0% 96%;
+    --figma-divider: 0 0% 90%;
+    --figma-text: 0 0% 17%;
+    --figma-text-secondary: 0 0% 46%;
+    --figma-hover: 0 0% 95%;
+    --figma-accent: 211 100% 52%;
+    --figma-accent-soft: 211 100% 95%;
   }
 
   .dark {
@@ -45,7 +54,16 @@
     --destructive-foreground: 240 10% 95%;
     --border: 240 7% 26%;
     --input: 240 7% 26%;
-    --ring: 240 8% 70%;
+    --ring: 211 100% 60%;
+    /* Figma chrome tokens (dark): #2C2C2C panels, #1E1E1E canvas */
+    --figma-panel: 0 0% 17%;
+    --figma-canvas: 0 0% 12%;
+    --figma-divider: 0 0% 27%;
+    --figma-text: 0 0% 93%;
+    --figma-text-secondary: 0 0% 65%;
+    --figma-hover: 0 0% 22%;
+    --figma-accent: 211 100% 60%;
+    --figma-accent-soft: 211 60% 22%;
   }
 }
 
@@ -80,19 +98,55 @@
   -webkit-app-region: no-drag;
 }
 
-/* react-rnd editable element hint: subtle outline + visible resize handles on hover */
+/* Figma chrome helpers: dot-grid canvas, thin panel scrollbars,
+   11px section labels, dense numeric fields. */
+.figma-canvas-bg {
+  background-color: hsl(var(--figma-canvas));
+  background-image: radial-gradient(hsl(var(--figma-text-secondary) / 0.28) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.figma-panel {
+  background-color: hsl(var(--figma-panel));
+  border-color: hsl(var(--figma-divider));
+}
+.figma-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--figma-text-secondary));
+}
+.figma-row-hover:hover {
+  background-color: hsl(var(--figma-hover));
+}
+.figma-thin-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.figma-thin-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--figma-text-secondary) / 0.35);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.figma-thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--figma-text-secondary) / 0.4) transparent;
+}
+
+/* react-rnd editable element hint: Figma-style blue selection */
 .rnd-editable {
   cursor: move;
-  outline: 2px dashed transparent;
-  outline-offset: 4px;
+  outline: 1.5px solid transparent;
+  outline-offset: -1.5px;
   transition: outline-color 120ms ease;
 }
 .rnd-editable:hover {
-  outline-color: hsl(var(--primary) / 0.55);
+  outline-color: hsl(var(--figma-accent) / 0.6);
 }
 .rnd-editable:focus-within,
 .rnd-editable.rnd-selected {
-  outline-color: hsl(var(--primary) / 0.9);
+  outline-color: hsl(var(--figma-accent));
   outline-style: solid;
 }
 
@@ -107,10 +161,10 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid hsl(var(--primary) / 0.65);
-  background: hsl(var(--background) / 0.92);
-  color: hsl(var(--foreground) / 0.92);
-  box-shadow: 0 8px 22px hsl(var(--foreground) / 0.2);
+  border: 1.5px solid hsl(var(--figma-accent));
+  background: hsl(var(--figma-panel));
+  color: hsl(var(--figma-accent));
+  box-shadow: 0 2px 8px hsl(0 0% 0% / 0.25);
   cursor: grab;
   opacity: 0;
   transition:
@@ -135,7 +189,7 @@
 
 /* Show a visible cursor outline on contenteditable text inside Rnd while focused. */
 .rnd-editable [contenteditable]:focus {
-  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.45);
+  box-shadow: 0 0 0 1.5px hsl(var(--figma-accent));
   border-radius: 2px;
 }
 

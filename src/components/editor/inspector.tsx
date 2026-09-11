@@ -127,24 +127,25 @@ export function Inspector({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b p-3 space-y-2">
-        <h2 className="text-sm font-semibold">Screen settings</h2>
-        <p className="text-xs text-muted-foreground">{LAYOUT_HINT[layoutValue]}</p>
+    <div className="figma-thin-scroll flex h-full flex-col bg-figma-panel text-figma-text">
+      <div className="space-y-1 border-b border-figma-divider p-3">
+        <h2 className="figma-section-label">Design</h2>
+        <p className="text-[11px] leading-snug text-figma-secondary">{LAYOUT_HINT[layoutValue]}</p>
       </div>
 
       <Tabs defaultValue="content" className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 px-3 pt-2">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="content" className="text-xs">Content</TabsTrigger>
-            <TabsTrigger value="design" className="text-xs">Design</TabsTrigger>
-            <TabsTrigger value="layers" className="text-xs">Layers</TabsTrigger>
+        <div className="shrink-0 border-b border-figma-divider px-3 pt-2">
+          <TabsList className="grid h-8 w-full grid-cols-3 rounded-md bg-figma-hover p-0.5">
+            <TabsTrigger value="content" className="h-7 rounded text-[12px]">Content</TabsTrigger>
+            <TabsTrigger value="design" className="h-7 rounded text-[12px]">Fill</TabsTrigger>
+            <TabsTrigger value="arrange" className="h-7 rounded text-[12px]">Arrange</TabsTrigger>
           </TabsList>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <TabsContent value="content" className="mt-0 space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs" htmlFor="screen-layout">
+        <div className="figma-thin-scroll min-h-0 flex-1 overflow-y-auto p-3">
+          <TabsContent value="content" className="mt-0 space-y-3">
+            <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
+              <p className="figma-section-label">Layout</p>
+              <Label className="sr-only" htmlFor="screen-layout">
                 Layout
               </Label>
               <Select
@@ -173,8 +174,9 @@ export function Inspector({
             </div>
 
             {!isStatic && (
-              <div className="space-y-1.5">
-                <Label className="text-xs" htmlFor="screen-label">
+              <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
+                <p className="figma-section-label">Text</p>
+                <Label className="text-[11px] text-figma-secondary" htmlFor="screen-label">
                   Label
                 </Label>
                 <Input
@@ -183,17 +185,18 @@ export function Inspector({
                   dir="auto"
                   onChange={(e) => setLocaleField("label", e.target.value)}
                   placeholder={labelPlaceholder}
+                  className="h-7 text-[12px]"
                 />
               </div>
             )}
 
             {!isStatic && (
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
                 <div className="flex items-baseline justify-between">
-                  <Label className="text-xs" htmlFor="screen-headline">
+                  <Label className="text-[11px] text-figma-secondary" htmlFor="screen-headline">
                     Headline
                   </Label>
-                  <span className="text-[10px] text-muted-foreground">newline = break</span>
+                  <span className="text-[10px] text-figma-secondary">newline = break</span>
                 </div>
                 <Textarea
                   id="screen-headline"
@@ -202,13 +205,15 @@ export function Inspector({
                   onChange={(e) => setLocaleField("headline", e.target.value)}
                   rows={3}
                   placeholder={headlinePlaceholder}
+                  className="text-[12px]"
                 />
               </div>
             )}
 
             {!isNoDevice && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">
+              <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
+                <p className="figma-section-label">Export layer</p>
+                <Label className="text-[11px] text-figma-secondary">
                   {isStatic
                     ? "Static image"
                     : slide.layout === "two-devices"
@@ -225,8 +230,9 @@ export function Inspector({
             )}
 
             {slide.layout === "two-devices" && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">Back device screenshot</Label>
+              <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
+                <p className="figma-section-label">Back layer</p>
+                <Label className="text-[11px] text-figma-secondary">Back device screenshot</Label>
                 <ScreenshotPicker
                   label="Secondary (back layer)"
                   value={slide.screenshotSecondary || ""}
@@ -245,14 +251,17 @@ export function Inspector({
               />
             )}
           </TabsContent>
-          <TabsContent value="design" className="mt-0 space-y-4">
-            <BackgroundEditor
-              value={slide.background}
-              showDefault
-              onChange={(background) => onChange({ background })}
-            />
+          <TabsContent value="design" className="mt-0 space-y-3">
+            <div className="rounded-md border border-figma-divider bg-figma-panel p-2.5">
+              <p className="figma-section-label mb-2">Fill</p>
+              <BackgroundEditor
+                value={slide.background}
+                showDefault
+                onChange={(background) => onChange({ background })}
+              />
+            </div>
           </TabsContent>
-          <TabsContent value="layers" className="mt-0 space-y-4">
+          <TabsContent value="arrange" className="mt-0 space-y-3">
             <ElementTransformControls
               slide={slide}
               device={device}
@@ -269,9 +278,9 @@ export function Inspector({
         </div>
       </Tabs>
       {onExportSlide && (
-        <div className="shrink-0 border-t bg-background p-3">
+        <div className="shrink-0 border-t border-figma-divider bg-figma-panel p-2.5">
           <Button
-            className="h-9 w-full gap-1.5 text-xs font-medium"
+            className="h-8 w-full gap-1.5 rounded-md bg-figma-accent text-[12px] font-semibold text-white hover:bg-figma-accent/90"
             onClick={onExportSlide}
             disabled={disabled}
             title={`Export only this screen (${locale.toUpperCase()})`}
@@ -565,21 +574,21 @@ function ElementTransformControls({
   const overlayDefaultColor = slide.inverted ? theme.fgAlt : theme.fg;
 
   return (
-    <Card className="space-y-3 bg-muted/30 p-3">
+    <Card className="space-y-2.5 rounded-md border-figma-divider bg-figma-panel p-2.5 shadow-none">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <Label className="text-xs font-semibold">Layers</Label>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="figma-section-label">Layers</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-figma-secondary">
             {activeId
-              ? "Fine-tune the selected element's geometry, rotation, and stacking — or focus it on the canvas and use arrow keys."
-              : "Click or Tab to an element on the canvas to fine-tune its geometry, rotation, and stacking."}
+              ? "Fine-tune geometry, rotation, and stacking — or focus it on the canvas and use arrow keys."
+              : "Click or Tab to an element on the canvas to fine-tune it."}
           </p>
         </div>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 shrink-0 px-2 text-xs"
+          className="h-7 shrink-0 rounded border-figma-divider px-2 text-[12px]"
           onClick={addTextElement}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -620,7 +629,7 @@ function ElementTransformControls({
           }}
         />
       ) : (
-        <div className="rounded border border-dashed bg-background/40 p-4 text-center text-[11px] text-muted-foreground">
+        <div className="rounded-md border border-dashed border-figma-divider bg-figma-hover/50 p-4 text-center text-[11px] text-figma-secondary">
           No element selected
         </div>
       )}

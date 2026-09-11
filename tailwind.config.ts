@@ -10,6 +10,16 @@ const config: Config = {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        figma: {
+          panel: "hsl(var(--figma-panel))",
+          canvas: "hsl(var(--figma-canvas))",
+          divider: "hsl(var(--figma-divider))",
+          text: "hsl(var(--figma-text))",
+          secondary: "hsl(var(--figma-text-secondary))",
+          hover: "hsl(var(--figma-hover))",
+          accent: "hsl(var(--figma-accent))",
+          accentSoft: "hsl(var(--figma-accent-soft))",
+        },
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         primary: {

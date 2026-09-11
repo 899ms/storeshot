@@ -168,9 +168,9 @@ export function PreviewStage({
   );
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-muted/40">
-      <div className="flex h-10 shrink-0 items-center gap-2 overflow-hidden border-b bg-background px-3 text-xs text-muted-foreground">
-        <span className="shrink-0 font-medium text-foreground">{DEVICE_LABEL[device]}</span>
+    <div className="figma-canvas-bg flex h-full w-full flex-col overflow-hidden">
+      <div className="flex h-9 shrink-0 items-center gap-2 overflow-hidden border-b border-figma-divider bg-figma-panel px-3 text-[12px] text-figma-secondary">
+        <span className="shrink-0 font-semibold text-figma-text">{DEVICE_LABEL[device]}</span>
         {activeSlide && (
           <>
             <span aria-hidden className="shrink-0 text-border">|</span>
@@ -179,13 +179,13 @@ export function PreviewStage({
             <span className="hidden min-w-0 truncate sm:inline">{LAYOUT_LABEL[activeSlide.layout]}</span>
           </>
         )}
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          <span className="hidden px-1 text-[11px] tabular-nums lg:inline">{cW}×{cH}</span>
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md border border-figma-divider bg-figma-panel p-0.5 shadow-sm">
+          <span className="hidden px-1.5 text-[11px] tabular-nums lg:inline">{cW}×{cH}</span>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 rounded text-figma-secondary hover:text-figma-text"
             onClick={() => setZoom((value) => Math.max(0.25, Number((value - 0.1).toFixed(2))))}
             disabled={zoom <= 0.25}
             title="Zoom out"
@@ -193,12 +193,19 @@ export function PreviewStage({
           >
             <ZoomOut className="h-3.5 w-3.5" />
           </Button>
-          <span className="min-w-10 text-center text-[11px] tabular-nums">{(scale * 100).toFixed(0)}%</span>
+          <button
+            type="button"
+            onClick={() => setZoom(1)}
+            title="Reset to 100% fit"
+            className="min-w-12 rounded px-1.5 py-1 text-center text-[11px] font-medium tabular-nums text-figma-text hover:bg-figma-hover"
+          >
+            {(scale * 100).toFixed(0)}%
+          </button>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 rounded text-figma-secondary hover:text-figma-text"
             onClick={() => setZoom((value) => Math.min(2, Number((value + 0.1).toFixed(2))))}
             disabled={zoom >= 2}
             title="Zoom in"
@@ -210,7 +217,7 @@ export function PreviewStage({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 rounded text-figma-secondary hover:text-figma-text"
             onClick={() => setZoom(1)}
             title="Fit active screen"
             aria-label="Fit active screen"
@@ -220,14 +227,14 @@ export function PreviewStage({
         </div>
       </div>
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
-      <div ref={scrollerRef} className="h-full w-full overflow-auto p-6 sm:p-10">
+      <div ref={scrollerRef} className="figma-thin-scroll h-full w-full overflow-auto p-6 sm:p-10">
         <div
           style={{
             width: totalW * scale,
             height: cH * scale,
             position: "relative",
             flexShrink: 0,
-            filter: "drop-shadow(0 32px 42px rgba(15, 23, 42, 0.18))",
+            filter: "drop-shadow(0 8px 32px rgba(0, 0, 0, 0.16))",
           }}
         >
           <div

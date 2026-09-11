@@ -921,11 +921,11 @@ function ScreenGuide({
         inset: 0,
         pointerEvents: "none",
         outline: `${active ? Math.max(4, cW * 0.003) : Math.max(2, cW * 0.0015)}px solid ${
-          active ? "rgba(91, 124, 250, 0.95)" : "rgba(15, 23, 42, 0.22)"
+          active ? "#0D99FF" : "rgba(15, 23, 42, 0.22)"
         }`,
         outlineOffset: active ? -Math.max(4, cW * 0.003) : -Math.max(2, cW * 0.0015),
         boxShadow: active
-          ? "inset 0 0 0 9999px rgba(91, 124, 250, 0.03)"
+          ? "inset 0 0 0 9999px rgba(13, 153, 255, 0.04)"
           : "inset 0 0 0 1px rgba(255, 255, 255, 0.22)",
       }}
     >
@@ -936,7 +936,7 @@ function ScreenGuide({
           top: cH * 0.024,
           borderRadius: cW * 0.018,
           padding: `${cH * 0.006}px ${cW * 0.018}px`,
-          background: active ? "rgba(91, 124, 250, 0.92)" : "rgba(15, 23, 42, 0.72)",
+          background: active ? "#0D99FF" : "rgba(15, 23, 42, 0.72)",
           color: "white",
           fontSize: Math.max(24, cW * 0.022),
           lineHeight: 1,

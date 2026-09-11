@@ -76,31 +76,32 @@ export function Sidebar({
   const activeWorkspace = useActiveWorkspace();
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b bg-background px-3 py-2.5">
-        <h2 className="text-sm font-semibold">Workspace</h2>
+    <div className="figma-thin-scroll flex h-full flex-col bg-figma-panel text-figma-text">
+      <div className="border-b border-figma-divider px-3 py-2.5">
+        <h2 className="figma-section-label">Workspace</h2>
         <div className="mt-1.5">
           <WorkspaceSwitcher disabled={disabled} />
         </div>
         {activeWorkspace ? (
-          <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground" title={activeWorkspace}>
+          <p className="mt-1 truncate font-mono text-[10px] text-figma-secondary" title={activeWorkspace}>
             {activeWorkspace}
           </p>
         ) : null}
       </div>
-      <div className="border-b bg-background px-3 py-2.5">
+      <div className="border-b border-figma-divider px-3 py-2">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">Screens</h2>
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+          <h2 className="figma-section-label">Layers</h2>
+          <span className="rounded bg-figma-hover px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-figma-secondary">
             {slides.length}
           </span>
+          <span className="ml-auto text-[11px] text-figma-secondary">Screens</span>
         </div>
-        <p className="mt-0.5 text-xs text-muted-foreground">
+        <p className="mt-0.5 text-[11px] text-figma-secondary">
           drag to reorder
         </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="figma-thin-scroll flex-1 overflow-y-auto p-1.5">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
@@ -136,11 +137,10 @@ export function Sidebar({
         </DndContext>
       </div>
 
-      <div className="border-t bg-background p-2.5">
+      <div className="border-t border-figma-divider bg-figma-panel p-2">
         <Button
           type="button"
-          className="h-9 w-full"
-          variant="default"
+          className="h-8 w-full rounded-md bg-figma-accent text-[12px] font-semibold text-white shadow-sm hover:bg-figma-accent/90"
           onClick={() => onAdd(newSlide("device-bottom"))}
           disabled={disabled}
           title="For a full-bleed image screen, add a screen then switch its Layout to Static image"

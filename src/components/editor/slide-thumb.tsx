@@ -72,15 +72,15 @@ function SlideThumbInner({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group relative flex items-stretch gap-2 p-1.5 transition-all hover:border-foreground/30 hover:bg-accent",
-        active && "border-primary ring-1 ring-primary",
+        "group relative flex items-stretch gap-1.5 rounded-md border border-transparent bg-transparent p-1.5 shadow-none transition-colors figma-row-hover",
+        active && "border-figma-accent bg-figma-accent-soft ring-1 ring-figma-accent",
       )}
     >
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="h-auto w-3 shrink-0 cursor-grab self-stretch rounded-sm text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+        className="h-auto w-3 shrink-0 cursor-grab self-stretch rounded-sm text-figma-secondary/60 hover:text-figma-text active:cursor-grabbing"
         {...attributes}
         {...listeners}
         aria-label={`Reorder screen ${index + 1} (press space, then arrow keys)`}
@@ -92,11 +92,11 @@ function SlideThumbInner({
         type="button"
         variant="ghost"
         onClick={onSelect}
-        className="h-auto flex-1 items-center justify-start gap-3 overflow-hidden p-0 text-left font-normal"
+        className="h-auto flex-1 items-center justify-start gap-2.5 overflow-hidden rounded p-0 text-left font-normal hover:bg-transparent"
       >
         <div
           aria-hidden
-          className="relative shrink-0 overflow-hidden rounded border bg-muted"
+          className="relative shrink-0 overflow-hidden rounded border border-figma-divider bg-figma-hover"
           style={{ width: THUMB_W, height: tileH }}
         >
           <div
@@ -138,16 +138,16 @@ function SlideThumbInner({
           </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="truncate text-[10px] font-medium uppercase tracking-wide text-figma-secondary">
             {`Screen ${index + 1} · ${LAYOUT_LABEL[slide.layout]}`}
           </span>
-          <span className="truncate text-sm font-medium leading-tight">
+          <span className="truncate text-[12px] font-medium leading-tight text-figma-text">
             {headline.split("\n")[0] || (
-              <em className="font-normal text-muted-foreground">Untitled</em>
+              <em className="font-normal text-figma-secondary">Untitled</em>
             )}
           </span>
           {label ? (
-            <span className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span className="truncate text-[10px] uppercase tracking-wide text-figma-secondary">
               {label}
             </span>
           ) : null}

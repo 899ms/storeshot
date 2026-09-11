@@ -47,7 +47,7 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
       setError(null);
       setPending(false);
     }
-  }, [open ]);
+  }, [open]);
 
   function close(seen: boolean) {
     if (seen) markOnboardingSeen();
@@ -92,7 +92,10 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close(true)}>
-      <DialogContent className="max-w-lg" aria-describedby="onboarding-desc">
+      <DialogContent
+        className="max-h-[90vh] max-w-2xl overflow-y-auto p-6 sm:p-8"
+        aria-describedby="onboarding-desc"
+      >
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -124,18 +127,20 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
           ))}
         </div>
 
+        {/* Fixed body height so the dialog doesn't jump between steps. */}
+        <div className="min-h-[340px] sm:min-h-[380px]">
         {step === 0 && (
-          <ul className="space-y-2.5 text-sm">
-            <li className="flex gap-2.5">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <ul className="space-y-4 text-[15px] leading-relaxed">
+            <li className="flex gap-3">
+              <Check className="mt-1 h-5 w-5 shrink-0 text-primary" />
               <span><strong>Design</strong> App Store + Google Play screenshots on a drag-and-drop canvas.</span>
             </li>
-            <li className="flex gap-2.5">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <li className="flex gap-3">
+              <Check className="mt-1 h-5 w-5 shrink-0 text-primary" />
               <span><strong>Localize</strong> every screen into store locales, with AI translation.</span>
             </li>
-            <li className="flex gap-2.5">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <li className="flex gap-3">
+              <Check className="mt-1 h-5 w-5 shrink-0 text-primary" />
               <span><strong>Export</strong> a complete, correctly-named PNG bundle in one click.</span>
             </li>
           </ul>
@@ -172,7 +177,7 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
         )}
 
         {step === 2 && (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
             <Card
               role="radio"
               aria-checked={choice === "samples"}
@@ -185,20 +190,20 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
                 }
               }}
               className={cn(
-                "cursor-pointer space-y-2 p-3 shadow-none outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "flex cursor-pointer flex-col space-y-3 p-4 shadow-none outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 choice === "samples"
                   ? "border-primary bg-primary/5 ring-1 ring-primary/30"
                   : "hover:bg-muted/40",
               )}
             >
-              <div className="flex gap-1 overflow-hidden rounded">
+              <div className="flex gap-1.5 overflow-hidden rounded-md">
                 {SAMPLE_IMAGES.map((src) => (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={src} src={src} alt="" className="h-16 w-8 object-cover" />
+                  <img key={src} src={src} alt="" className="h-44 min-w-0 flex-1 object-cover" />
                 ))}
               </div>
-              <p className="text-sm font-semibold">Sample deck</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[15px] font-semibold">Sample deck</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Five ready-made screens — export your first bundle in a minute, then
                 swap in your own screenshots.
               </p>
@@ -215,38 +220,39 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
                 }
               }}
               className={cn(
-                "cursor-pointer space-y-2 p-3 shadow-none outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "flex cursor-pointer flex-col space-y-3 p-4 shadow-none outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 choice === "blank"
                   ? "border-primary bg-primary/5 ring-1 ring-primary/30"
                   : "hover:bg-muted/40",
               )}
             >
-              <div className="flex h-16 items-center justify-center rounded bg-muted/60">
-                <ImageIcon className="h-6 w-6 text-muted-foreground" />
+              <div className="flex h-44 items-center justify-center rounded-md bg-muted/60">
+                <ImageIcon className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-sm font-semibold">Blank deck</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[15px] font-semibold">Blank deck</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Empty screenshot slots — bring your own images from the start.
               </p>
             </Card>
           </div>
         )}
+        </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center">
           <Button
             type="button"
             variant="ghost"
-            className="h-11"
+            className="h-11 w-full sm:w-auto"
             onClick={() => close(true)}
           >
             Skip
           </Button>
-          <div className="flex flex-1 justify-end gap-2">
+          <div className="flex w-full flex-1 flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
             {step > 0 && (
               <Button
                 type="button"
                 variant="outline"
-                className="h-11"
+                className="h-11 w-full sm:w-auto"
                 onClick={() => setStep(step - 1)}
               >
                 Back
@@ -255,13 +261,13 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
             {step < STEPS.length - 1 ? (
               <Button
                 type="button"
-                className="h-11"
+                className="h-11 w-full sm:w-auto"
                 onClick={() => setStep(step + 1)}
               >
                 Continue
               </Button>
             ) : (
-              <Button type="button" className="h-11" onClick={finish}>
+              <Button type="button" className="h-11 w-full sm:w-auto" onClick={finish}>
                 Start creating
               </Button>
             )}
