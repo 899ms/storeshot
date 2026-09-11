@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, ArrowUp, Bug, Check, ChevronRight, Cloud, Download, Folder, FolderOpen, FolderSearch, Home, Languages, Loader2, RotateCcw, Save, Settings, Smartphone, Square, Tablet, UnfoldHorizontal, X } from "lucide-react";
+import { AlertTriangle, ArrowUp, Bug, Check, ChevronRight, Cloud, Download, Folder, FolderOpen, FolderSearch, Home, Languages, Loader2, MoreHorizontal, Redo, RotateCcw, Save, Settings, Smartphone, Square, Tablet, Undo, UnfoldHorizontal, X } from "lucide-react";
 import { isMacShell, revealPath } from "@/lib/native";
 import { Button } from "@/components/ui/button";
 import {
@@ -68,6 +68,8 @@ type Props = {
   canTranslateLocale: boolean;
   onTranslateLocale: () => void;
   busy: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 };
 
 export function Toolbar(props: Props) {
@@ -80,124 +82,136 @@ export function Toolbar(props: Props) {
   const shellBar = isMacShell();
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b bg-card/40 px-4 py-2${shellBar ? " electron-shell-bar pl-[76px]" : ""}`}
+      className={`flex h-12 shrink-0 items-center gap-2 overflow-hidden border-b bg-background/80 px-3 backdrop-blur${shellBar ? " electron-shell-bar pl-[76px]" : ""}`}
     >
-      <WorkspaceSwitcher disabled={props.busy} />
-      <Input
-        value={props.appName}
-        onChange={(e) => props.setAppName(e.target.value)}
-        className="h-8 w-40 border-dashed text-sm font-semibold focus-visible:border-input focus-visible:border-solid focus-visible:bg-background"
-        placeholder="App name"
-        aria-label="App name"
-        title="App name (click to edit)"
-        disabled={props.busy}
-      />
-
-      <Separator orientation="vertical" className="mx-1 h-5" />
-
-      <Button
-        type="button"
-        variant={props.connectedCanvas ? "secondary" : "outline"}
-        size="sm"
-        className="h-8 gap-1.5 px-2 text-xs"
-        onClick={() => props.setConnectedCanvas(!props.connectedCanvas)}
-        aria-pressed={props.connectedCanvas}
-        title={
-          props.connectedCanvas
-            ? "Connected canvas enabled"
-            : "Isolated screens; turn on to let elements cross screen edges"
-        }
-        disabled={props.busy}
-      >
-        <UnfoldHorizontal className="h-3.5 w-3.5" />
-        {props.connectedCanvas ? "Connected" : "Isolated"}
-      </Button>
-
-      <Separator orientation="vertical" className="mx-1 h-5" />
-
-      {props.setDevice ? (
-        <Select
-          value={props.device}
-          onValueChange={(v) => props.setDevice?.(v as Device)}
+      {/* Left — project */}
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <WorkspaceSwitcher disabled={props.busy} />
+        <Input
+          value={props.appName}
+          onChange={(e) => props.setAppName(e.target.value)}
+          className="h-9 w-32 border-transparent bg-transparent text-sm font-semibold hover:border-input hover:bg-background focus-visible:border-input focus-visible:bg-background lg:w-40"
+          placeholder="App name"
+          aria-label="App name"
+          title="App name (click to edit)"
           disabled={props.busy}
-        >
-          <SelectTrigger className="h-8 w-36 text-xs" aria-label="Device">
-            <SelectValue placeholder="Device" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="iphone">
-              <span className="flex items-center gap-1.5">
-                <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
-                iPhone 6.9&Prime;
-              </span>
-            </SelectItem>
-            <SelectItem value="ipad">
-              <span className="flex items-center gap-1.5">
-                <Tablet className="h-3.5 w-3.5 text-muted-foreground" />
-                iPad 13&Prime;
-              </span>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      ) : null}
+        />
+        <span className="hidden shrink-0 xl:block">
+          <SaveStatus savedAt={props.savedAt} saveError={props.saveError} saving={props.saving} />
+        </span>
+      </div>
 
-      {showLocale && (
-        <>
-        <Select value={props.locale} onValueChange={props.setLocale} disabled={props.busy}>
-          <SelectTrigger className="h-8 w-44 text-xs" aria-label="Language">
-            <SelectValue placeholder="Language">
-              {getLocaleFlag(props.locale)} {getLocaleLabel(props.locale)}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent className="max-h-72">
-            {props.locales.map((l) => (
-              <SelectItem key={l} value={l}>
-                {getLocaleFlag(l)} {getLocaleLabel(l)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {props.locale !== "en" && (
+      {/* Center — canvas context */}
+      <div className="flex min-w-0 flex-1 items-center justify-center">
+        <div className="flex min-w-0 items-center gap-1 rounded-lg bg-muted/60 p-1">
+          {props.setDevice ? (
+            <div role="radiogroup" aria-label="Device" className="flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                variant={props.device === "iphone" ? "secondary" : "ghost"}
+                size="sm"
+                className={`h-7 gap-1 px-2 text-xs${props.device === "iphone" ? " bg-background shadow-sm" : ""}`}
+                onClick={() => props.setDevice?.("iphone")}
+                aria-pressed={props.device === "iphone"}
+                title='iPhone 6.9" deck'
+                disabled={props.busy}
+              >
+                <Smartphone className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">iPhone</span>
+              </Button>
+              <Button
+                type="button"
+                variant={props.device === "ipad" ? "secondary" : "ghost"}
+                size="sm"
+                className={`h-7 gap-1 px-2 text-xs${props.device === "ipad" ? " bg-background shadow-sm" : ""}`}
+                onClick={() => props.setDevice?.("ipad")}
+                aria-pressed={props.device === "ipad"}
+                title='iPad 13" deck'
+                disabled={props.busy}
+              >
+                <Tablet className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">iPad</span>
+              </Button>
+            </div>
+          ) : null}
+          {props.setDevice ? <Separator orientation="vertical" className="h-5 shrink-0" /> : null}
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="h-8 gap-1.5 px-2.5 text-xs"
-            onClick={props.onTranslateLocale}
-            title={`Translate all ${props.translatableCount} screens from English to ${props.locale} (overwrites existing)`}
-            aria-label={`Translate locale ${props.locale} (${props.translatableCount} screens)`}
-            disabled={
-              props.busy ||
-              props.translatingLocale ||
-              !props.canTranslateLocale ||
-              props.translatableCount === 0
+            className={`h-7 shrink-0 gap-1 px-2 text-xs${props.connectedCanvas ? " bg-background shadow-sm" : ""}`}
+            onClick={() => props.setConnectedCanvas(!props.connectedCanvas)}
+            aria-pressed={props.connectedCanvas}
+            title={
+              props.connectedCanvas
+                ? "Connected canvas enabled"
+                : "Isolated screens; turn on to let elements cross screen edges"
             }
+            disabled={props.busy}
           >
-            {props.translatingLocale ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Languages className="h-4 w-4" />
-            )}
-            <span className="hidden sm:inline">
-              {props.translatingLocale
-                ? "Translating…"
-                : `Translate locale (${props.locale})`}
-            </span>
+            <UnfoldHorizontal className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">{props.connectedCanvas ? "Connected" : "Isolated"}</span>
           </Button>
-        )}
-        <span className="sr-only" role="status">
-          {props.translatingLocale ? `Translating screens to ${props.locale}…` : ""}
-        </span>
-        </>
-      )}
+          {showLocale ? <Separator orientation="vertical" className="h-5 shrink-0" /> : null}
 
-      <div className="ml-auto flex flex-wrap items-center gap-2">
-        <SaveStatus savedAt={props.savedAt} saveError={props.saveError} saving={props.saving} />
+          {showLocale ? (
+            <Select value={props.locale} onValueChange={props.setLocale} disabled={props.busy}>
+              <SelectTrigger className="h-7 w-28 border-0 bg-transparent text-xs shadow-none focus:ring-0 lg:w-36" aria-label="Language">
+                <SelectValue placeholder="Language">
+                  {getLocaleFlag(props.locale)} {getLocaleLabel(props.locale)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                {props.locales.map((l) => (
+                  <SelectItem key={l} value={l}>
+                    {getLocaleFlag(l)} {getLocaleLabel(l)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+        </div>
+      </div>
+      <span className="sr-only" role="status">
+        {props.translatingLocale ? `Translating screens to ${props.locale}…` : ""}
+      </span>
+
+      {/* Right — actions */}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {props.onUndo || props.onRedo ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="hidden h-9 w-9 sm:inline-flex"
+              onClick={props.onUndo}
+              title="Undo (Cmd/Ctrl+Z)"
+              aria-label="Undo"
+              disabled={props.busy || !props.onUndo}
+            >
+              <Undo className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="hidden h-9 w-9 sm:inline-flex"
+              onClick={props.onRedo}
+              title="Redo (Cmd/Ctrl+Shift+Z)"
+              aria-label="Redo"
+              disabled={props.busy || !props.onRedo}
+            >
+              <Redo className="h-4 w-4" />
+            </Button>
+            <Separator orientation="vertical" className="hidden h-5 sm:block" />
+          </>
+        ) : null}
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="h-9 w-9"
           onClick={props.onSave}
           title="Save now (Cmd/Ctrl+S)"
           aria-label="Save now"
@@ -213,7 +227,7 @@ export function Toolbar(props: Props) {
           type="button"
           variant="ghost"
           size="icon"
-          className="relative h-8 w-8"
+          className="relative h-9 w-9"
           onClick={props.onOpenErrorLog}
           title={props.errorCount > 0 ? `Error log (${props.errorCount} unread)` : "Error log"}
           aria-label={props.errorCount > 0 ? `Error log, ${props.errorCount} unread` : "Error log"}
@@ -228,45 +242,73 @@ export function Toolbar(props: Props) {
         <Separator orientation="vertical" className="h-5" />
         <ThemeToggle disabled={props.busy} />
         <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 gap-1.5 px-2.5 text-xs"
-          onClick={props.onOpenTranslate}
-          title="Translate all screens to all added locales"
-          aria-label="Translate all locales"
-          disabled={props.busy}
-        >
-          <Languages className="h-4 w-4" />
-          <span className="hidden sm:inline">Translate All</span>
-        </Button>
-        <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="h-9 w-9"
           onClick={props.onOpenSettings}
           title="Settings (providers, model, languages)"
           aria-label="Settings"
         >
           <Settings className="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => setResetOpen(true)}
-          title="Reset screens to defaults"
-          aria-label="Reset"
-          disabled={props.busy}
-        >
-          <RotateCcw className="h-4 w-4" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              title="More actions (translate, reset)"
+              aria-label="More actions"
+              disabled={props.busy}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem onSelect={() => props.onOpenTranslate()} disabled={props.busy}>
+              <span className="flex w-full items-center gap-2">
+                <Languages className="h-3.5 w-3.5 text-muted-foreground" />
+                Translate all locales…
+              </span>
+            </DropdownMenuItem>
+            {props.locale !== "en" && showLocale ? (
+              <DropdownMenuItem
+                onSelect={() => props.onTranslateLocale()}
+                disabled={
+                  props.busy ||
+                  props.translatingLocale ||
+                  !props.canTranslateLocale ||
+                  props.translatableCount === 0
+                }
+              >
+                <span className="flex w-full items-center gap-2">
+                  {props.translatingLocale ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Languages className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                  {props.translatingLocale
+                    ? "Translating…"
+                    : `Translate locale (${props.locale})`}
+                </span>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setResetOpen(true)} disabled={props.busy}>
+              <span className="flex w-full items-center gap-2">
+                <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+                Reset screens to defaults…
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {props.exporting ? (
           <Button
             onClick={props.onStopExport}
             variant="destructive"
             size="sm"
-            className="h-8 gap-1.5 px-3 text-xs font-semibold"
+            className="h-9 gap-1.5 px-3 text-xs font-semibold"
             title="Stop export process"
           >
             <Square className="h-3.5 w-3.5 fill-current" />
@@ -276,7 +318,7 @@ export function Toolbar(props: Props) {
           <Button
             onClick={props.onExport}
             size="sm"
-            className="h-8 gap-1.5"
+            className="h-9 gap-1.5 px-4"
             title={`Export ${deviceLabel} App Store screenshot bundle as zip (Cmd/Ctrl+E)`}
           >
             <Download className="h-4 w-4" />
@@ -507,7 +549,7 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 max-w-48 gap-1.5 px-2 text-xs"
+            className="h-9 max-w-40 gap-1.5 px-2 text-xs"
             title={active ? `Workspace: ${active}` : "Choose a workspace folder"}
             disabled={disabled}
           >

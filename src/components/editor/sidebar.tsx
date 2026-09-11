@@ -73,17 +73,22 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b p-3">
-        <h2 className="text-sm font-semibold">Screens</h2>
-        <p className="text-xs text-muted-foreground">
-          {slides.length} screen{slides.length === 1 ? "" : "s"} · drag to reorder
+      <div className="border-b bg-background px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold">Screens</h2>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+            {slides.length}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          drag to reorder
         </p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {slides.map((slide, i) => (
                 <SlideThumb
                   key={slide.id}
@@ -116,10 +121,10 @@ export function Sidebar({
         </DndContext>
       </div>
 
-      <div className="border-t bg-card p-3 flex gap-2">
+      <div className="border-t bg-background p-2.5 flex gap-2">
         <Button
           type="button"
-          className="flex-1"
+          className="h-9 flex-1"
           variant="default"
           onClick={() => onAdd(newSlide("device-bottom"))}
           disabled={disabled}
@@ -129,6 +134,8 @@ export function Sidebar({
         <Button
           type="button"
           variant="outline"
+          size="icon"
+          className="h-9 w-9 shrink-0"
           onClick={() => onAdd(newSlide("static"))}
           disabled={disabled}
           title="Add a static full-bleed image screen (overlay texts allowed)"

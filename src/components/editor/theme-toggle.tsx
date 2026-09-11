@@ -40,7 +40,7 @@ export function ThemeToggle({ disabled }: { disabled?: boolean }) {
       type="button"
       variant="ghost"
       size="icon"
-      className="h-8 w-8"
+      className="h-9 w-9"
       onClick={toggle}
       title={dark ? "Switch to light mode" : "Switch to dark mode"}
       aria-label="Toggle color theme"

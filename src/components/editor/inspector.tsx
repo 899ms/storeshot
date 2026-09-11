@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { activeProvider, useAppSettings } from "@/lib/app-settings";
 import { LAYOUT_HINT, LAYOUT_LABEL } from "@/lib/constants";
@@ -136,125 +137,138 @@ export function Inspector({
         <p className="text-xs text-muted-foreground">{LAYOUT_HINT[layoutValue]}</p>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs" htmlFor="screen-layout">
-            Layout
-          </Label>
-          <Select
-            value={layoutValue}
-            onValueChange={(layout) => {
-              const next = layout as SlideLayout;
-              onChange({
-                layout: next,
-                transforms: undefined,
-                screenshotSecondary:
-                  next === "two-devices" ? slide.screenshotSecondary || slide.screenshot : undefined,
-              });
-            }}
-          >
-            <SelectTrigger id="screen-layout">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {layoutOptions.map(([layout, label]) => (
-                <SelectItem key={layout} value={layout}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <Tabs defaultValue="content" className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 border-b px-3 pt-2">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="content" className="text-xs">Content</TabsTrigger>
+            <TabsTrigger value="design" className="text-xs">Design</TabsTrigger>
+            <TabsTrigger value="arrange" className="text-xs">Arrange</TabsTrigger>
+          </TabsList>
         </div>
-
-        <BackgroundEditor
-          value={slide.background}
-          showDefault
-          onChange={(background) => onChange({ background })}
-        />
-
-        {!isStatic && (
-          <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="screen-label">
-              Label
-            </Label>
-            <Input
-              id="screen-label"
-              value={localeLabel}
-              dir="auto"
-              onChange={(e) => setLocaleField("label", e.target.value)}
-              placeholder={labelPlaceholder}
-            />
-          </div>
-        )}
-
-        {!isStatic && (
-          <div className="space-y-1.5">
-            <div className="flex items-baseline justify-between">
-              <Label className="text-xs" htmlFor="screen-headline">
-                Headline
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <TabsContent value="content" className="mt-0 space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs" htmlFor="screen-layout">
+                Layout
               </Label>
-              <span className="text-[10px] text-muted-foreground">newline = break</span>
+              <Select
+                value={layoutValue}
+                onValueChange={(layout) => {
+                  const next = layout as SlideLayout;
+                  onChange({
+                    layout: next,
+                    transforms: undefined,
+                    screenshotSecondary:
+                      next === "two-devices" ? slide.screenshotSecondary || slide.screenshot : undefined,
+                  });
+                }}
+              >
+                <SelectTrigger id="screen-layout">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {layoutOptions.map(([layout, label]) => (
+                    <SelectItem key={layout} value={layout}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Textarea
-              id="screen-headline"
-              value={localeHeadline}
-              dir="auto"
-              onChange={(e) => setLocaleField("headline", e.target.value)}
-              rows={3}
-              placeholder={headlinePlaceholder}
-            />
-          </div>
-        )}
 
-        {!isNoDevice && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">
-              {isStatic
-                ? "Static image"
-                : slide.layout === "two-devices"
-                  ? "Front device screenshot"
-                  : "Screenshot"}
-            </Label>
-            <ScreenshotPicker
-              label="Primary"
-              value={slide.screenshot}
+            {!isStatic && (
+              <div className="space-y-1.5">
+                <Label className="text-xs" htmlFor="screen-label">
+                  Label
+                </Label>
+                <Input
+                  id="screen-label"
+                  value={localeLabel}
+                  dir="auto"
+                  onChange={(e) => setLocaleField("label", e.target.value)}
+                  placeholder={labelPlaceholder}
+                />
+              </div>
+            )}
+
+            {!isStatic && (
+              <div className="space-y-1.5">
+                <div className="flex items-baseline justify-between">
+                  <Label className="text-xs" htmlFor="screen-headline">
+                    Headline
+                  </Label>
+                  <span className="text-[10px] text-muted-foreground">newline = break</span>
+                </div>
+                <Textarea
+                  id="screen-headline"
+                  value={localeHeadline}
+                  dir="auto"
+                  onChange={(e) => setLocaleField("headline", e.target.value)}
+                  rows={3}
+                  placeholder={headlinePlaceholder}
+                />
+              </div>
+            )}
+
+            {!isNoDevice && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">
+                  {isStatic
+                    ? "Static image"
+                    : slide.layout === "two-devices"
+                      ? "Front device screenshot"
+                      : "Screenshot"}
+                </Label>
+                <ScreenshotPicker
+                  label="Primary"
+                  value={slide.screenshot}
+                  locale={locale}
+                  onChange={(v) => onChange({ screenshot: v })}
+                />
+              </div>
+            )}
+
+            {slide.layout === "two-devices" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Back device screenshot</Label>
+                <ScreenshotPicker
+                  label="Secondary (back layer)"
+                  value={slide.screenshotSecondary || ""}
+                  locale={locale}
+                  onChange={(v) => onChange({ screenshotSecondary: v })}
+                />
+              </div>
+            )}
+
+            {locales.length > 1 && (
+              <ScreenTranslate
+                slide={slide}
+                locale={locale}
+                disabled={disabled}
+                onChange={onChange}
+              />
+            )}
+          </TabsContent>
+          <TabsContent value="design" className="mt-0 space-y-4">
+            <BackgroundEditor
+              value={slide.background}
+              showDefault
+              onChange={(background) => onChange({ background })}
+            />
+          </TabsContent>
+          <TabsContent value="arrange" className="mt-0 space-y-4">
+            <ElementTransformControls
+              slide={slide}
+              device={device}
               locale={locale}
-              onChange={(v) => onChange({ screenshot: v })}
+              selectedElementId={selectedElementId}
+              textOnly={isStatic}
+              onChange={onChange}
+              onSelectElement={onSelectElement}
             />
-          </div>
-        )}
-
-        {slide.layout === "two-devices" && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Back device screenshot</Label>
-            <ScreenshotPicker
-              label="Secondary (back layer)"
-              value={slide.screenshotSecondary || ""}
-              locale={locale}
-              onChange={(v) => onChange({ screenshotSecondary: v })}
-            />
-          </div>
-        )}
-
-        {locales.length > 1 && (
-          <ScreenTranslate
-            slide={slide}
-            locale={locale}
-            disabled={disabled}
-            onChange={onChange}
-          />
-        )}
-
-        <ElementTransformControls
-          slide={slide}
-          device={device}
-          locale={locale}
-          selectedElementId={selectedElementId}
-          textOnly={isStatic}
-          onChange={onChange}
-          onSelectElement={onSelectElement}
-        />
-      </div>
+          </TabsContent>
+        </div>
+      </Tabs>
     </div>
   );
 }

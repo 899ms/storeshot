@@ -1213,6 +1213,8 @@ export function ScreenshotEditor() {
         errorCount={errorUnread}
         onOpenErrorLog={() => setErrorLogOpen(true)}
         busy={busy}
+        onUndo={undo}
+        onRedo={redo}
       />
 
       <ErrorLogDialog open={errorLogOpen} onOpenChange={setErrorLogOpen} />
@@ -1293,7 +1295,7 @@ export function ScreenshotEditor() {
         exporting={exporting}
       />
 
-      <div className="flex flex-1 overflow-hidden md:flex-row flex-col">
+      <div className="flex min-h-0 flex-1 overflow-hidden md:flex-row flex-col">
         {!workspace ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
             <p className="text-lg font-semibold">Choose a workspace to get started</p>
@@ -1312,7 +1314,7 @@ export function ScreenshotEditor() {
           </div>
         ) : (
         <>
-        <aside className="md:w-72 w-full shrink-0 border-r bg-card md:max-h-none max-h-64 overflow-hidden">
+        <aside className="md:w-[264px] w-full shrink-0 border-r bg-background md:max-h-none max-h-64 overflow-hidden">
           <Sidebar
             slides={currentSlides}
             activeId={activeSlide?.id || null}
@@ -1374,7 +1376,7 @@ export function ScreenshotEditor() {
           )}
         </main>
 
-        <aside className="md:w-80 w-full shrink-0 border-l bg-card md:max-h-none max-h-96 overflow-hidden">
+        <aside className="md:w-[320px] w-full shrink-0 border-l bg-background md:max-h-none max-h-96 overflow-hidden">
           {activeSlide ? (
             <Inspector
               slide={activeSlide}
@@ -1403,6 +1405,25 @@ export function ScreenshotEditor() {
         </>
         )}
       </div>
+
+      <footer className="flex h-7 shrink-0 items-center gap-2 overflow-hidden border-t bg-background px-3 text-[11px] text-muted-foreground">
+        <span className="min-w-0 truncate font-medium">
+          {workspace ? workspaceName(workspace) : "No workspace"}
+        </span>
+        <span aria-hidden className="shrink-0 text-border">|</span>
+        <span className="shrink-0 tabular-nums">
+          {currentSlides.length} screen{currentSlides.length === 1 ? "" : "s"}
+        </span>
+        <span aria-hidden className="shrink-0 text-border">|</span>
+        <span className="shrink-0 tabular-nums">{state.locales.length} locale{state.locales.length === 1 ? "" : "s"}</span>
+        <span aria-hidden className="shrink-0 text-border">|</span>
+        <span className="shrink-0 tabular-nums">{cW}×{cH}</span>
+        <span className="ml-auto hidden shrink-0 gap-3 md:flex">
+          <span title="Save now">⌘S Save</span>
+          <span title="Export bundle">⌘E Export</span>
+          <span title="Undo">⌘Z Undo</span>
+        </span>
+      </footer>
 
       {/* Off-screen export container — full-resolution canvases for html-to-image. */}
       <div

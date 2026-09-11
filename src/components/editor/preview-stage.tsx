@@ -3,7 +3,6 @@ import * as React from "react";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { DEVICE_LABEL, LAYOUT_LABEL } from "@/lib/constants";
 import type {
   Device,
@@ -145,11 +144,64 @@ export function PreviewStage({
   );
 
   return (
-    <div
-      ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-[radial-gradient(70%_70%_at_50%_35%,_hsl(var(--background))_0%,_hsl(var(--muted))_100%)]"
-    >
-      <div ref={scrollerRef} className="h-full w-full overflow-auto p-4 sm:p-12">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-muted/40">
+      <div className="flex h-10 shrink-0 items-center gap-2 overflow-hidden border-b bg-background px-3 text-xs text-muted-foreground">
+        <span className="shrink-0 font-medium text-foreground">{DEVICE_LABEL[device]}</span>
+        {activeSlide && (
+          <>
+            <span aria-hidden className="shrink-0 text-border">|</span>
+            <span className="shrink-0 tabular-nums">Screen {activeIndex + 1} of {slides.length}</span>
+            <span aria-hidden className="hidden shrink-0 text-border sm:inline">|</span>
+            <span className="hidden min-w-0 truncate sm:inline">{LAYOUT_LABEL[activeSlide.layout]}</span>
+            {!connectedCanvas && (
+              <Badge variant="outline" className="hidden shrink-0 text-[10px] font-normal md:inline-flex">
+                isolated
+              </Badge>
+            )}
+          </>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          <span className="hidden px-1 text-[11px] tabular-nums lg:inline">{cW}×{cH}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setZoom((value) => Math.max(0.25, Number((value - 0.1).toFixed(2))))}
+            disabled={zoom <= 0.25}
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </Button>
+          <span className="min-w-10 text-center text-[11px] tabular-nums">{(scale * 100).toFixed(0)}%</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setZoom((value) => Math.min(2, Number((value + 0.1).toFixed(2))))}
+            disabled={zoom >= 2}
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setZoom(1)}
+            title="Fit active screen"
+            aria-label="Fit active screen"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
+      <div ref={scrollerRef} className="h-full w-full overflow-auto p-6 sm:p-10">
         <div
           style={{
             width: totalW * scale,
@@ -187,67 +239,7 @@ export function PreviewStage({
         </div>
       </div>
 
-      <Badge
-        variant="secondary"
-        className="pointer-events-none absolute left-4 top-4 gap-1.5 px-2 py-1 text-[11px] font-normal text-muted-foreground shadow-sm backdrop-blur"
-      >
-        <span className="font-medium text-foreground">{DEVICE_LABEL[device]}</span>
-        {activeSlide && (
-          <>
-            <span aria-hidden>·</span>
-            <span>Screen {activeIndex + 1}</span>
-            <span aria-hidden>·</span>
-            <span>{LAYOUT_LABEL[activeSlide.layout]}</span>
-          </>
-        )}
-        {!connectedCanvas && (
-          <>
-            <span aria-hidden>·</span>
-            <span>isolated</span>
-          </>
-        )}
-      </Badge>
-
-      <Card className="absolute bottom-4 right-4 flex items-center gap-1.5 px-1.5 py-1 text-[10px] tabular-nums text-muted-foreground shadow-sm">
-        <span className="px-1">{slides.length}× {cW}×{cH}</span>
-        <span aria-hidden className="text-border">|</span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => setZoom((value) => Math.max(0.25, Number((value - 0.1).toFixed(2))))}
-          disabled={zoom <= 0.25}
-          title="Zoom out"
-          aria-label="Zoom out"
-        >
-          <ZoomOut className="h-3.5 w-3.5" />
-        </Button>
-        <span className="min-w-10 text-center">{(scale * 100).toFixed(0)}%</span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => setZoom((value) => Math.min(2, Number((value + 0.1).toFixed(2))))}
-          disabled={zoom >= 2}
-          title="Zoom in"
-          aria-label="Zoom in"
-        >
-          <ZoomIn className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => setZoom(1)}
-          title="Fit active screen"
-          aria-label="Fit active screen"
-        >
-          <Maximize2 className="h-3.5 w-3.5" />
-        </Button>
-      </Card>
+      </div>
     </div>
   );
 }
