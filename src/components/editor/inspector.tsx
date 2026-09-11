@@ -126,14 +126,57 @@ export function Inspector({
     onChange({ [key]: writeLocalized(slide[key], locale, value) } as Partial<Slide>);
   }
 
+  // Figma "double-click canvas title to rename": canvas dispatches
+  // storeshot:focus-screen-title with the slide id; focus the Title input.
+  const titleInputRef = React.useRef<HTMLInputElement | null>(null);
+  React.useEffect(() => {
+    function onFocusTitle(e: Event) {
+      const detail = (e as CustomEvent<string>).detail;
+      if (detail && detail !== slide.id) return;
+      // Switch to Content tab first so the input is mounted, then focus it.
+      setTab("content");
+      requestAnimationFrame(() => titleInputRef.current?.focus());
+    }
+    window.addEventListener("storeshot:focus-screen-title", onFocusTitle);
+    return () => window.removeEventListener("storeshot:focus-screen-title", onFocusTitle);
+  }, [slide.id]);
+
+  const [tab, setTab] = React.useState("content");
+  const lastSelectedRef = React.useRef<ElementId | null>(null);
+  // Figma behavior: selecting an element jumps to Arrange, selecting the
+  // screen (no element) jumps back to Content. Ref-compare so typing in a
+  // field never yanks the tab out from under the user.
+  React.useEffect(() => {
+    if (lastSelectedRef.current === selectedElementId) return;
+    lastSelectedRef.current = selectedElementId;
+    setTab(selectedElementId ? "arrange" : "content");
+  }, [selectedElementId]);
+
+  const elementName = selectedElementId ? elementLabel(selectedElementId) : null;
+
   return (
     <div className="figma-thin-scroll flex h-full flex-col bg-figma-panel text-figma-text">
       <div className="space-y-1 border-b border-figma-divider p-3">
-        <h2 className="figma-section-label">Design</h2>
-        <p className="text-[11px] leading-snug text-figma-secondary">{LAYOUT_HINT[layoutValue]}</p>
+        <h2 className="figma-section-label">
+          {selectedElementId ? elementName : `Screen — ${(slide.name ?? "").trim() || "Untitled"}`}
+        </h2>
+        <p className="text-[11px] leading-snug text-figma-secondary">
+          {selectedElementId
+            ? "Element selected — geometry, type, and stacking."
+            : LAYOUT_HINT[layoutValue]}
+        </p>
+        {selectedElementId ? (
+          <button
+            type="button"
+            onClick={() => onSelectElement(null)}
+            className="text-[11px] font-medium text-figma-accent hover:underline"
+          >
+            ← Back to screen
+          </button>
+        ) : null}
       </div>
 
-      <Tabs defaultValue="content" className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 border-b border-figma-divider px-3 pt-2">
           <TabsList className="grid h-8 w-full grid-cols-3 rounded-md bg-figma-hover p-0.5">
             <TabsTrigger value="content" className="h-7 rounded text-[12px]">Content</TabsTrigger>
@@ -143,6 +186,21 @@ export function Inspector({
         </div>
         <div className="figma-thin-scroll min-h-0 flex-1 overflow-y-auto p-3">
           <TabsContent value="content" className="mt-0 space-y-3">
+            <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
+              <p className="figma-section-label">Screen title</p>
+              <Input
+                ref={titleInputRef}
+                value={slide.name ?? ""}
+                onChange={(e) => onChange({ name: e.target.value })}
+                placeholder="Welcome"
+                maxLength={60}
+                className="h-7 text-[12px]"
+                aria-label="Screen title"
+              />
+              <p className="text-[10px] text-figma-secondary">
+                Shows above the screen and in export filenames.
+              </p>
+            </div>
             <div className="space-y-1.5 rounded-md border border-figma-divider bg-figma-panel p-2.5">
               <p className="figma-section-label">Layout</p>
               <Label className="sr-only" htmlFor="screen-layout">
@@ -286,7 +344,7 @@ export function Inspector({
             title={`Export only this screen (${locale.toUpperCase()})`}
           >
             <Download className="h-3.5 w-3.5" />
-            {exportLabel ?? "Export screen"}
+            {exportLabel ?? "Export Screen"}
           </Button>
         </div>
       )}

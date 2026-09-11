@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { toast } from "sonner";
-import { Check, FlaskConical, Globe, KeyRound, Plus, Trash2, Type } from "lucide-react";
+import { Check, FlaskConical, Globe, Image as ImageIcon, KeyRound, Plus, Trash2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,6 +23,8 @@ import {
 } from "@/lib/app-settings";
 import { getLocaleFlag, getLocaleLabel, LOCALE_NAMES } from "@/lib/locale";
 import { CURATED_FONTS, ensureFontLoaded, fontStack } from "@/lib/fonts";
+import type { ScreenBackground } from "@/lib/types";
+import { BackgroundEditor } from "./background-controls";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -32,11 +34,13 @@ type Props = {
   currentLocale: string;
   headlineFont: string;
   labelFont: string;
+  background: ScreenBackground;
   disabled?: boolean;
   onAddLocale: (locale: string) => void;
   onRemoveLocale: (locale: string) => void;
   onHeadlineFontChange: (family: string) => void;
   onLabelFontChange: (family: string) => void;
+  onBackgroundChange: (background: ScreenBackground) => void;
   onSelectLocale: (locale: string) => void;
   initialTab?: string;
 };
@@ -48,11 +52,13 @@ export function SettingsDialog({
   currentLocale,
   headlineFont,
   labelFont,
+  background,
   disabled,
   onAddLocale,
   onRemoveLocale,
   onHeadlineFontChange,
   onLabelFontChange,
+  onBackgroundChange,
   onSelectLocale,
   initialTab,
 }: Props) {
@@ -60,10 +66,12 @@ export function SettingsDialog({
     useAppSettings();
   // Controlled tab so callers (e.g. the toolbar locale menu) can open the
   // dialog directly on a specific tab. Synced on open only, so tab switches
-  // inside an open dialog are never overridden.
-  const [tab, setTab] = React.useState(initialTab ?? "providers");
+  // inside an open dialog are never overridden. Legacy "model" maps to the
+  // merged providers tab.
+  const initial = initialTab === "model" ? "providers" : (initialTab ?? "providers");
+  const [tab, setTab] = React.useState(initial);
   React.useEffect(() => {
-    if (open && initialTab) setTab(initialTab);
+    if (open && initialTab) setTab(initialTab === "model" ? "providers" : initialTab);
   }, [open, initialTab]);
 
   return (
@@ -72,17 +80,17 @@ export function SettingsDialog({
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle className="text-base font-bold">Settings</DialogTitle>
           <DialogDescription className="text-xs">
-            Providers, model, fonts, and project languages. API keys stay in this browser only.
+            Providers, background, fonts, and project languages. API keys stay in this browser only.
           </DialogDescription>
         </DialogHeader>
         <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 border-b px-6 pt-3">
             <TabsList className="h-8">
               <TabsTrigger value="providers" className="gap-1.5 text-xs">
-                <KeyRound className="h-3.5 w-3.5" /> Providers
+                <KeyRound className="h-3.5 w-3.5" /> Providers & Model
               </TabsTrigger>
-              <TabsTrigger value="model" className="gap-1.5 text-xs">
-                Model
+              <TabsTrigger value="background" className="gap-1.5 text-xs">
+                <ImageIcon className="h-3.5 w-3.5" /> Background
               </TabsTrigger>
               <TabsTrigger value="fonts" className="gap-1.5 text-xs">
                 <Type className="h-3.5 w-3.5" /> Fonts
@@ -93,7 +101,7 @@ export function SettingsDialog({
             </TabsList>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
-            <TabsContent value="providers" className="mt-0 space-y-3">
+            <TabsContent value="providers" className="mt-0 space-y-4">
               <ProvidersTab
                 settings={settings}
                 onSelect={(id) => setSettings((p) => ({ ...p, activeProviderId: id }))}
@@ -101,10 +109,8 @@ export function SettingsDialog({
                 onAdd={addProvider}
                 onRemove={removeProvider}
               />
-            </TabsContent>
-            <TabsContent value="model" className="mt-0 space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Model slug</Label>
+                <Label className="text-xs">Model Slug</Label>
                 <Input
                   value={settings.model}
                   onChange={(e) => setSettings((p) => ({ ...p, model: e.target.value }))}
@@ -116,6 +122,21 @@ export function SettingsDialog({
                   Used with {activeProvider(settings).label} ({activeProvider(settings).baseUrl}).
                   Any <code>provider/model</code> slug works.
                 </p>
+              </div>
+            </TabsContent>
+            <TabsContent value="background" className="mt-0 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Default Background</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Used for new screens and any screen without its own override.
+                  Changing it restyles existing screens that use the default.
+                </p>
+                <BackgroundEditor
+                  value={background}
+                  onChange={(v) => {
+                    if (v) onBackgroundChange(v);
+                  }}
+                />
               </div>
             </TabsContent>
             <TabsContent value="fonts" className="mt-0 space-y-4">

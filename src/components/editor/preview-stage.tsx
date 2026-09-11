@@ -1,7 +1,15 @@
 "use client";
 import * as React from "react";
-import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import { Copy, Maximize2, Type, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { DEVICE_LABEL, LAYOUT_LABEL } from "@/lib/constants";
 import type {
   Device,
@@ -10,6 +18,7 @@ import type {
   ScreenBackground,
   SelectedElement,
   Slide,
+  SlideLayout,
   Theme,
 } from "@/lib/types";
 import { DeckCanvas, ISOLATED_SCREEN_GAP, getCanvas } from "./slide-canvas";
@@ -44,6 +53,13 @@ type Props = {
   onTextElementTextChange: (slideId: string, id: string, v: string) => void;
   onElementChange: (slideId: string, id: ElementId, t: ElementTransform) => void;
   onSelectElement: (element: SelectedElement | null) => void;
+  onRenameScreen?: (slideId: string, name: string) => void;
+  // Figma-style floating dock (essentials v1)
+  onAddText?: () => void;
+  onDuplicateScreen?: () => void;
+  slideLayout?: SlideLayout;
+  onLayoutChange?: (layout: SlideLayout) => void;
+  dockDisabled?: boolean;
 };
 
 // Fits one full-resolution screen inside the viewport while keeping the whole
@@ -65,6 +81,12 @@ export function PreviewStage({
   onTextElementTextChange,
   onElementChange,
   onSelectElement,
+  onRenameScreen,
+  onAddText,
+  onDuplicateScreen,
+  slideLayout,
+  onLayoutChange,
+  dockDisabled,
 }: Props) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const scrollerRef = React.useRef<HTMLDivElement>(null);
@@ -156,6 +178,7 @@ export function PreviewStage({
       onElementChange,
       onSelectElement,
       onSelectScreen: handleCanvasActiveSlideChange,
+      onRenameScreen,
     }),
     [
       onLabelChange,
@@ -164,11 +187,12 @@ export function PreviewStage({
       onElementChange,
       onSelectElement,
       handleCanvasActiveSlideChange,
+      onRenameScreen,
     ],
   );
 
   return (
-    <div className="figma-canvas-bg flex h-full w-full flex-col overflow-hidden">
+    <div className="figma-canvas-bg relative flex h-full w-full flex-col overflow-hidden">
       <div className="flex h-9 shrink-0 items-center gap-2 overflow-hidden border-b border-figma-divider bg-figma-panel px-3 text-[12px] text-figma-secondary">
         <span className="shrink-0 font-semibold text-figma-text">{DEVICE_LABEL[device]}</span>
         {activeSlide && (
@@ -226,8 +250,8 @@ export function PreviewStage({
           </Button>
         </div>
       </div>
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
-      <div ref={scrollerRef} className="figma-thin-scroll h-full w-full overflow-auto p-6 sm:p-10">
+      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden">
+      <div ref={scrollerRef} className="figma-thin-scroll h-full w-full overflow-auto p-6 pt-12 sm:p-10 sm:pt-14">
         <div
           style={{
             width: totalW * scale,
@@ -267,6 +291,75 @@ export function PreviewStage({
       </div>
 
       </div>
+      {/* Floating Figma-style dock: quick element actions */}
+      {activeSlide ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-figma-divider bg-figma-panel p-1 shadow-lg">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 rounded-lg px-2.5 text-[12px] text-figma-text"
+              onClick={onAddText}
+              disabled={dockDisabled || !onAddText}
+              title="Add text (T)"
+              aria-label="Add text element"
+            >
+              <Type className="h-4 w-4" />
+              <span className="hidden sm:inline">Text</span>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 rounded-lg px-2.5 text-[12px] text-figma-text"
+              onClick={onDuplicateScreen}
+              disabled={dockDisabled || !onDuplicateScreen}
+              title="Duplicate screen (Cmd/Ctrl+D)"
+              aria-label="Duplicate screen"
+            >
+              <Copy className="h-4 w-4" />
+              <span className="hidden sm:inline">Duplicate</span>
+            </Button>
+            {slideLayout && onLayoutChange ? (
+              <>
+                <Separator orientation="vertical" className="h-5 bg-figma-divider" />
+                <Select
+                  value={slideLayout}
+                  onValueChange={(v) => onLayoutChange(v as SlideLayout)}
+                  disabled={dockDisabled}
+                >
+                  <SelectTrigger
+                    className="h-8 w-32 border-0 bg-transparent text-[12px] shadow-none"
+                    aria-label="Screen layout"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(LAYOUT_LABEL).map(([layout, label]) => (
+                      <SelectItem key={layout} value={layout}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            ) : null}
+            <Separator orientation="vertical" className="h-5 bg-figma-divider" />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg text-figma-secondary hover:text-figma-text"
+              onClick={() => setZoom(1)}
+              title="Zoom to fit"
+              aria-label="Zoom to fit"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

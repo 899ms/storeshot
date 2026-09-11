@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LAYOUT_LABEL } from "@/lib/constants";
 import { pickText } from "@/lib/locale";
+import { screenDisplayName, screenIndexPrefix } from "@/lib/screen-title";
 import type { Device, ScreenBackground, Slide, Theme } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DeckCanvas, SlideCanvas, getCanvas } from "./slide-canvas";
@@ -139,7 +140,7 @@ function SlideThumbInner({
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[10px] font-medium uppercase tracking-wide text-figma-secondary">
-            {`Screen ${index + 1} · ${LAYOUT_LABEL[slide.layout]}`}
+            {`${screenIndexPrefix(index)} · ${screenDisplayName(slide, LAYOUT_LABEL[slide.layout])}`}
           </span>
           <span className="truncate text-[12px] font-medium leading-tight text-figma-text">
             {headline.split("\n")[0] || (

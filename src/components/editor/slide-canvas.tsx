@@ -25,6 +25,7 @@ import {
 import { toTextElementId } from "@/lib/elements";
 import { img } from "@/lib/image-cache";
 import { pickText, resolveScreenshot, isRtlLocale } from "@/lib/locale";
+import { screenCanvasLabel } from "@/lib/screen-title";
 import { fontStack } from "@/lib/fonts";
 import { resolveHeadlineStyle, resolveLabelStyle } from "@/lib/caption-style";
 import { DEFAULT_HEADLINE_FONT, DEFAULT_LABEL_FONT } from "@/lib/defaults";
@@ -92,6 +93,7 @@ type DeckEditHandlers = {
   onElementChange?: (slideId: string, id: ElementId, t: ElementTransform) => void;
   onSelectElement?: (element: SelectedElement | null) => void;
   onSelectScreen?: (slideId: string) => void;
+  onRenameScreen?: (slideId: string, name: string) => void;
 };
 
 export type { DeckEditHandlers };
@@ -711,6 +713,16 @@ const MemoSlide = React.memo(
     if (connectedCanvas) return elements;
     return (
       <div
+        onMouseDown={(e) => {
+          if (!editable) return;
+          if (e.defaultPrevented) return;
+          const target = e.target as HTMLElement | null;
+          if (target && target.closest && target.closest(".rnd-editable, [contenteditable]")) {
+            return;
+          }
+          edit?.onSelectScreen?.(slide.id);
+          edit?.onSelectElement?.(null);
+        }}
         style={{
           position: "absolute",
           left: wrapLeft,
@@ -744,6 +756,166 @@ const MemoSlide = React.memo(
     prev.wrapLeft === next.wrapLeft,
 );
 
+// Figma-style screen title above each frame: click selects, second click or
+// double-click edits inline. Editing state is local so keystrokes never
+// re-render the deck; commit goes through onRename on blur/Enter, Esc cancels.
+function ScreenTitle({
+  slide,
+  index,
+  screenX,
+  maxWidth,
+  titleSize,
+  titleOffset,
+  active,
+  editable,
+  onSelect,
+  onRename,
+}: {
+  slide: Slide;
+  index: number;
+  screenX: number;
+  maxWidth: number;
+  titleSize: number;
+  titleOffset: number;
+  active: boolean;
+  editable?: boolean;
+  onSelect: () => void;
+  onRename: (name: string) => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const editRef = React.useRef<HTMLSpanElement | null>(null);
+  const label = screenCanvasLabel(slide, index);
+
+  // Focus + select-all when entering edit mode.
+  React.useEffect(() => {
+    if (!editing) return;
+    const el = editRef.current;
+    if (!el) return;
+    el.textContent = (slide.name ?? "").trim() || "Screen";
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
+
+  // Leave edit mode when the screen identity changes (deleted/switched).
+  React.useEffect(() => {
+    setEditing(false);
+  }, [slide.id]);
+
+  function commit() {
+    const el = editRef.current;
+    const next = (el?.textContent ?? "").replace(/\n/g, " ").trim().slice(0, 60);
+    setEditing(false);
+    if (next !== (slide.name ?? "").trim()) {
+      onRename(next);
+    }
+  }
+
+  function cancel() {
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <span
+        ref={editRef}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-label={`Rename screen ${index + 1}`}
+        spellCheck={false}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+          e.stopPropagation();
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        style={{
+          position: "absolute",
+          left: screenX,
+          top: -titleOffset,
+          maxWidth,
+          minWidth: 40,
+          overflow: "hidden",
+          whiteSpace: "nowrap",
+          fontSize: titleSize,
+          lineHeight: 1.2,
+          fontWeight: 700,
+          letterSpacing: 0,
+          color: "#0D99FF",
+          background: "rgba(13, 153, 255, 0.08)",
+          borderRadius: 4,
+          outline: "1.5px solid #0D99FF",
+          cursor: "text",
+          userSelect: "text",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={editable ? 0 : undefined}
+      aria-label={`Select screen ${index + 1}: ${slide.name?.trim() || "Screen"}. Activate again to rename.`}
+      onMouseDown={(e) => {
+        if (!editable || e.defaultPrevented) return;
+        e.preventDefault();
+        if (!active) {
+          onSelect();
+        } else {
+          setEditing(true);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (!editable) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (!active) onSelect();
+          else setEditing(true);
+        }
+      }}
+      onDoubleClick={(e) => {
+        if (!editable) return;
+        e.stopPropagation();
+        onSelect();
+        setEditing(true);
+      }}
+      title="Click to select, click again to rename"
+      style={{
+        position: "absolute",
+        left: screenX,
+        top: -titleOffset,
+        maxWidth,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        fontSize: titleSize,
+        lineHeight: 1.2,
+        fontWeight: active ? 700 : 600,
+        letterSpacing: 0,
+        color: active ? "#0D99FF" : "rgba(118, 118, 118, 0.95)",
+        cursor: editable ? "pointer" : "default",
+        userSelect: "none",
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
 function DeckCanvasInner({
   slides,
   device,
@@ -765,6 +937,9 @@ function DeckCanvasInner({
   const { cW, cH } = getCanvas(device);
   const stride = cW + gap;
   const totalW = Math.max(1, slides.length) * cW + Math.max(0, slides.length - 1) * gap;
+  // Editor titles float above each frame (Figma-style); export stays clipped.
+  const titleSize = Math.max(24, cW * 0.022);
+  const titleOffset = titleSize * 1.9;
 
   return (
     <div
@@ -772,9 +947,28 @@ function DeckCanvasInner({
         width: totalW,
         height: cH,
         position: "relative",
-        overflow: "hidden",
+        overflow: showGuides ? "visible" : "hidden",
       }}
     >
+      {showGuides &&
+        slides.map((slide, index) => (
+          <ScreenTitle
+            key={`${slide.id}-title`}
+            slide={slide}
+            index={index}
+            screenX={index * stride}
+            maxWidth={cW}
+            titleSize={titleSize}
+            titleOffset={titleOffset}
+            active={activeSlideId === slide.id}
+            editable={editable}
+            onSelect={() => {
+              edit?.onSelectScreen?.(slide.id);
+              edit?.onSelectElement?.(null);
+            }}
+            onRename={(name) => edit?.onRenameScreen?.(slide.id, name)}
+          />
+        ))}
       {slides.map((slide, index) => {
         const screenX = index * stride;
         const active = activeSlideId === slide.id;
@@ -782,7 +976,14 @@ function DeckCanvasInner({
           <div
             key={`${slide.id}-bg`}
             onMouseDown={(e) => {
-              if (!editable || e.defaultPrevented) return;
+              if (!editable) return;
+              // Only empty-canvas hits select the screen: element drags and
+              // text edits mark the event handled so they keep element selection.
+              if (e.defaultPrevented) return;
+              const target = e.target as HTMLElement | null;
+              if (target && target.closest && target.closest(".rnd-editable, [contenteditable]")) {
+                return;
+              }
               edit?.onSelectScreen?.(slide.id);
               edit?.onSelectElement?.(null);
             }}
@@ -811,7 +1012,9 @@ function DeckCanvasInner({
           editable={editable}
           edit={edit}
           selectedElementId={
-            selectedElement?.slideId === slide.id ? selectedElement.elementId : null
+            selectedElement && selectedElement.slideId === slide.id
+              ? selectedElement.elementId
+              : null
           }
           previewScale={previewScale}
           hideEmpty={hideEmpty}
@@ -913,6 +1116,8 @@ function ScreenGuide({
   index: number;
   active: boolean;
 }) {
+  void index;
+  void cH;
   return (
     <div
       aria-hidden
@@ -928,25 +1133,7 @@ function ScreenGuide({
           ? "inset 0 0 0 9999px rgba(13, 153, 255, 0.04)"
           : "inset 0 0 0 1px rgba(255, 255, 255, 0.22)",
       }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          left: cW * 0.035,
-          top: cH * 0.024,
-          borderRadius: cW * 0.018,
-          padding: `${cH * 0.006}px ${cW * 0.018}px`,
-          background: active ? "#0D99FF" : "rgba(15, 23, 42, 0.72)",
-          color: "white",
-          fontSize: Math.max(24, cW * 0.022),
-          lineHeight: 1,
-          fontWeight: 700,
-          letterSpacing: 0,
-        }}
-      >
-        {index + 1}
-      </div>
-    </div>
+    />
   );
 }
 

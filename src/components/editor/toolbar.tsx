@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Download, Languages, Loader2, MoreHorizontal, Plus, Redo, RotateCcw, Save, Settings, Smartphone, Sparkles, Square, Tablet, Undo, UnfoldHorizontal } from "lucide-react";
+import { Download, Keyboard, Languages, Loader2, MoreHorizontal, Plus, Redo, RotateCcw, Save, Settings, Smartphone, Sparkles, Square, Tablet, Undo, UnfoldHorizontal } from "lucide-react";
 import { isMacShell } from "@/lib/native";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +47,7 @@ type Props = {
   onOpenLocales: () => void;
   onOpenTranslate: () => void;
   onShowOnboarding?: () => void;
+  onShowShortcuts?: () => void;
   onStopExport?: () => void;
   onResetAll: () => void;
   onResetDevice?: () => void;
@@ -175,7 +176,7 @@ export function Toolbar(props: Props) {
               <SelectItem value={ADD_LOCALE_VALUE}>
                 <span className="flex items-center gap-1.5">
                   <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-                  Add more locales…
+                  Add More Locales…
                 </span>
               </SelectItem>
             </SelectContent>
@@ -240,7 +241,7 @@ export function Toolbar(props: Props) {
           size="icon"
           className="h-8 w-8 rounded-md text-figma-secondary hover:text-figma-text"
           onClick={props.onOpenSettings}
-          title="Settings (providers, model, languages)"
+          title="Settings (Providers, Background, Languages)"
           aria-label="Settings"
         >
           <Settings className="h-4 w-4" />
@@ -265,7 +266,7 @@ export function Toolbar(props: Props) {
                 <DropdownMenuItem onSelect={() => props.onShowOnboarding?.()}>
                   <span className="flex w-full items-center gap-2">
                     <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-                    Show welcome…
+                    Show Welcome…
                   </span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -303,9 +304,17 @@ export function Toolbar(props: Props) {
             <DropdownMenuItem onSelect={() => setResetOpen(true)} disabled={props.busy}>
               <span className="flex w-full items-center gap-2">
                 <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-                Reset screens to defaults…
+                Reset Screens to Defaults…
               </span>
             </DropdownMenuItem>
+            {props.onShowShortcuts ? (
+              <DropdownMenuItem onSelect={() => props.onShowShortcuts?.()}>
+                <span className="flex w-full items-center gap-2">
+                  <Keyboard className="h-3.5 w-3.5 text-muted-foreground" />
+                  Keyboard Shortcuts…
+                </span>
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
         {props.exporting ? (
@@ -329,7 +338,7 @@ export function Toolbar(props: Props) {
               title={`Export ${deviceLabel} App Store screenshot bundle as zip (Cmd/Ctrl+E)`}
             >
               <Download className="h-4 w-4" />
-              Share
+              Export
             </Button>
           </>
         )}
@@ -338,7 +347,7 @@ export function Toolbar(props: Props) {
       <Dialog open={resetOpen} onOpenChange={setResetOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Reset to defaults?</DialogTitle>
+            <DialogTitle>Reset to Defaults?</DialogTitle>
             <DialogDescription>
               Are you sure you want to reset your {deviceLabel} screens to defaults? Your canvas edits, uploaded screenshots, and copy will be lost.
             </DialogDescription>
@@ -355,7 +364,7 @@ export function Toolbar(props: Props) {
                 props.onResetAll();
               }}
             >
-              Reset screens
+              Reset Screens
             </Button>
           </div>
         </DialogContent>

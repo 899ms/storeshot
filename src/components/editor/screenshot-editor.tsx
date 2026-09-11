@@ -9,7 +9,8 @@ import {
   themeById,
 } from "@/lib/constants";
 import { detectPlatform, makeStarterSlides, newSlide, nid } from "@/lib/defaults";
-import { isBuiltInElementId, isTextElementId, textElementKey } from "@/lib/elements";
+import { slugifyScreenTitle } from "@/lib/screen-title";
+import { isBuiltInElementId, isTextElementId, textElementKey, toTextElementId } from "@/lib/elements";
 import { preloadImages } from "@/lib/image-cache";
 import { exportFolderForLocale, resolveScreenshot, writeLocalized, DEFAULT_LOCALE } from "@/lib/locale";
 import { reportError } from "@/lib/error-log";
@@ -66,6 +67,9 @@ const ExportDialog = dynamic(() =>
 const OnboardingDialog = dynamic(() =>
   import("./onboarding-wizard").then((m) => m.OnboardingDialog),
 );
+const ShortcutsDialog = dynamic(() =>
+  import("./shortcuts-dialog").then((m) => m.ShortcutsDialog),
+);
 import {
   type ExportConfig,
   type ExportTarget,
@@ -102,6 +106,7 @@ export function ScreenshotEditor() {
   const [onboardingOpen, setOnboardingOpen] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [settingsTab, setSettingsTab] = React.useState<string | undefined>(undefined);
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [translateOpen, setTranslateOpen] = React.useState(false);
   const [ready, setReady] = React.useState(false);
   const [translatingLocale, setTranslatingLocale] = React.useState(false);
@@ -699,8 +704,76 @@ export function ScreenshotEditor() {
     [setState],
   );
 
-  // ---------- Keyboard shortcuts ----------
+  // Floating dock: add an overlay text element to the active screen, centered.
+  // Mirrors inspector addTextElement geometry so both entry points behave alike.
+  const handleAddTextElement = React.useCallback(() => {
+    const slide = activeSlide;
+    if (!slide || exporting) return;
+    const { cW, cH } = getCanvas(state.device);
+    const id = nid();
+    const existingZ = [
+      ...(Object.keys(slide.transforms || {}).map(
+        (key) => slide.transforms?.[key as BuiltInElementId]?.zIndex ?? 0,
+      )),
+      ...((slide.textElements || []).map((element) => element.transform.zIndex ?? 0)),
+    ];
+    const zIndex = Math.max(5, ...existingZ) + 1;
+    patchSlide(slide.id, {
+      textElements: [
+        ...(slide.textElements || []),
+        {
+          id,
+          text: writeLocalized({}, state.locale, "New text"),
+          transform: {
+            x: cW * 0.18,
+            y: cH * 0.42,
+            width: cW * 0.64,
+            height: cH * 0.12,
+            rotation: 0,
+            zIndex,
+          },
+          fontSize: Math.round(Math.min(cW, cH) * 0.065),
+          fontWeight: 800,
+          align: "center",
+        },
+      ],
+    });
+    setSelectedElement({ slideId: slide.id, elementId: toTextElementId(id) });
+  }, [activeSlide, exporting, patchSlide, state.device, state.locale]);
 
+  const renameSlide = React.useCallback(
+    (slideId: string, name: string) => {
+      patchSlide(slideId, { name });
+    },
+    [patchSlide],
+  );
+
+  // Delete the selected overlay text element (Delete key). Returns true if handled.
+  const deleteSelectedTextElement = React.useCallback(() => {
+    const sel = selectedElement;
+    if (!sel || !isTextElementId(sel.elementId)) return false;
+    const textId = textElementKey(sel.elementId);
+    setState((prev) => ({
+      ...prev,
+      slidesByDevice: {
+        ...prev.slidesByDevice,
+        [prev.device]: (prev.slidesByDevice[prev.device] || []).map((slide) =>
+          slide.id === sel.slideId
+            ? {
+                ...slide,
+                textElements: (slide.textElements || []).filter(
+                  (element) => element.id !== textId,
+                ),
+              }
+            : slide,
+        ),
+      },
+    }));
+    setSelectedElement(null);
+    return true;
+  }, [selectedElement, setState]);
+
+  // ---------- Keyboard shortcuts ----------
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -747,16 +820,29 @@ export function ScreenshotEditor() {
           e.preventDefault();
           duplicateSlide(activeSlide.id);
         }
+      } else if ((e.key === "e" || e.key === "E") && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setExportDialogOpen(true);
+      } else if ((e.key === "t" || e.key === "T") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        handleAddTextElement();
+      } else if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setShortcutsOpen(true);
       } else if ((e.key === "Backspace" || e.key === "Delete") && (e.metaKey || e.ctrlKey)) {
         if (activeSlide) {
           e.preventDefault();
           deleteSlide(activeSlide.id);
         }
+      } else if (e.key === "Backspace" || e.key === "Delete") {
+        if (deleteSelectedTextElement()) {
+          e.preventDefault();
+        }
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeSlide, currentSlides, duplicateSlide, deleteSlide, exporting, undo, redo]);
+  }, [activeSlide, currentSlides, duplicateSlide, deleteSlide, deleteSelectedTextElement, handleAddTextElement, exporting, undo, redo]);
 
   // ---------- Export ----------
 
@@ -894,6 +980,7 @@ export function ScreenshotEditor() {
               slide.layout,
               config.folderPreset,
               posOf.get(slideIdx) ?? slideIdx + 1,
+              slugifyScreenTitle(slide.name),
             ),
           });
         }
@@ -1113,13 +1200,14 @@ export function ScreenshotEditor() {
     }
 
     try {
+      const titleSlug = slugifyScreenTitle(activeSlide.name);
       if (sizes.length === 1) {
         const size = sizes[0];
         const dataUrl = await captureWithSingleRetry(el, cW, cH, size.w, size.h);
         const a = document.createElement("a");
         a.href = dataUrl;
         const num = String(idx + 1).padStart(2, "0");
-        a.download = `${slugify(state.appName)}-${platform}-${state.device}-${num}-${activeSlide.layout}-${state.locale}-${size.w}x${size.h}.png`;
+        a.download = `${slugify(state.appName)}-${platform}-${state.device}-${num}-${titleSlug}-${activeSlide.layout}-${state.locale}-${size.w}x${size.h}.png`;
         a.click();
         toast.success(`Exported screen ${idx + 1} (${size.w}×${size.h})`, {
           ...(isShell()
@@ -1137,7 +1225,7 @@ export function ScreenshotEditor() {
           const dataUrl = await captureWithSingleRetry(el, cW, cH, size.w, size.h);
           const base64 = dataUrl.split(",")[1] || "";
           const num = String(idx + 1).padStart(2, "0");
-          const filename = `${num}-${activeSlide.layout}-${size.w}x${size.h}.png`;
+          const filename = `${num}-${titleSlug}-${activeSlide.layout}-${size.w}x${size.h}.png`;
           zip.file(filename, base64, { base64: true });
         }
         const blob = await zip.generateAsync({ type: "blob" });
@@ -1275,6 +1363,7 @@ export function ScreenshotEditor() {
         }}
         onOpenTranslate={() => setTranslateOpen(true)}
         onShowOnboarding={() => setOnboardingOpen(true)}
+        onShowShortcuts={() => setShortcutsOpen(true)}
         onStopExport={stopExport}
         translatableCount={translatableCount}
         translatingLocale={translatingLocale}
@@ -1300,6 +1389,8 @@ export function ScreenshotEditor() {
 
       <ErrorLogDialog open={errorLogOpen} onOpenChange={setErrorLogOpen} />
 
+      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={(o) => {
@@ -1310,6 +1401,7 @@ export function ScreenshotEditor() {
         currentLocale={state.locale}
         headlineFont={state.headlineFont}
         labelFont={state.labelFont}
+        background={state.background}
         disabled={busy}
         initialTab={settingsTab}
         onAddLocale={(locale) =>
@@ -1332,6 +1424,7 @@ export function ScreenshotEditor() {
         }
         onHeadlineFontChange={(family) => setState((p) => ({ ...p, headlineFont: family }))}
         onLabelFontChange={(family) => setState((p) => ({ ...p, labelFont: family }))}
+        onBackgroundChange={(background) => setState((p) => ({ ...p, background }))}
         onSelectLocale={(locale) => setState((p) => ({ ...p, locale }))}
       />
 
@@ -1411,6 +1504,11 @@ export function ScreenshotEditor() {
           <Sidebar
             slides={currentSlides}
             activeId={activeSlide?.id || null}
+            selectedElementId={
+              selectedElement && selectedElement.slideId === activeSlide?.id
+                ? selectedElement.elementId
+                : null
+            }
             device={state.device}
             theme={theme}
             locale={state.locale}
@@ -1421,6 +1519,9 @@ export function ScreenshotEditor() {
             disabled={busy}
             onReorder={reorderSlides}
             onSelect={setActiveSlideId}
+            onSelectElement={(slideId, elementId) =>
+              setSelectedElement(elementId ? { slideId, elementId } : null)
+            }
             onDelete={deleteSlide}
             onDuplicate={duplicateSlide}
             onAdd={addSlide}
@@ -1446,6 +1547,26 @@ export function ScreenshotEditor() {
               onTextElementTextChange={patchTextElementText}
               onElementChange={patchElementTransform}
               onSelectElement={setSelectedElement}
+              onRenameScreen={renameSlide}
+              onAddText={handleAddTextElement}
+              onDuplicateScreen={
+                activeSlide ? () => duplicateSlide(activeSlide.id) : undefined
+              }
+              slideLayout={activeSlide?.layout}
+              onLayoutChange={
+                activeSlide
+                  ? (layout) =>
+                      patchSlide(activeSlide.id, {
+                        layout,
+                        transforms: undefined,
+                        screenshotSecondary:
+                          layout === "two-devices"
+                            ? activeSlide.screenshotSecondary || activeSlide.screenshot
+                            : undefined,
+                      })
+                  : undefined
+              }
+              dockDisabled={busy}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
@@ -1454,7 +1575,7 @@ export function ScreenshotEditor() {
               </p>
               <p className="max-w-sm text-xs">
                 {workspace
-                  ? "Nothing has been added here yet — your screens, uploads, and project file live in this workspace's screenshots/ folder. Add your first screen to get started."
+                  ? "Nothing has been added here yet — your screens, uploads, and project file live in this workspace's screenshots/ folder. Add Your First Screen to get started."
                   : "Add a screen on the left to get started."}
               </p>
               <Button
@@ -1463,7 +1584,7 @@ export function ScreenshotEditor() {
                 disabled={busy}
                 onClick={() => addSlide(newSlide())}
               >
-                Add your first screen
+                Add Your First Screen
               </Button>
             </div>
           )}
@@ -1477,11 +1598,13 @@ export function ScreenshotEditor() {
               theme={theme}
                 locale={state.locale}
               locales={state.locales}
-              exportLabel={`Export screen ${currentSlides.findIndex((s) => s.id === activeSlide.id) + 1} · ${state.locale.toUpperCase()}`}
+              exportLabel={`Export - ${((activeSlide.name ?? "").trim() || "Untitled").slice(0, 24)} - ${state.locale.toUpperCase()}`}
               headlineFont={state.headlineFont}
               labelFont={state.labelFont}
               selectedElementId={
-                selectedElement?.slideId === activeSlide.id ? selectedElement.elementId : null
+                selectedElement && selectedElement.slideId === activeSlide.id
+                  ? selectedElement.elementId
+                  : null
               }
               disabled={busy}
               onExportSlide={exportActiveSlide}
@@ -1494,8 +1617,8 @@ export function ScreenshotEditor() {
             />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">Nothing to inspect</p>
-              <p className="text-xs">Screen settings will appear here once you add or select one.</p>
+              <p className="font-medium text-foreground">Nothing to Inspect</p>
+              <p className="text-xs">Screen Settings will appear here once you add or select one.</p>
             </div>
           )}
         </aside>
@@ -1519,6 +1642,8 @@ export function ScreenshotEditor() {
           <span title="Save now">⌘S Save</span>
           <span title="Export bundle">⌘E Export</span>
           <span title="Undo">⌘Z Undo</span>
+          <span title="Add text element">T Text</span>
+          <span title="Keyboard shortcuts">? Shortcuts</span>
         </span>
       </footer>
 

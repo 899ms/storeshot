@@ -34,4 +34,19 @@ describe("buildExportZipPath", () => {
       "ios-iphone-69_sl_01-hero.png",
     );
   });
+
+  it("includes the slugified screen title as 01-title-layout", () => {
+    expect(buildExportZipPath(target, "de-DE", 0, "hero", "standard", 1, "welcome")).toBe(
+      "apple/iphone-6.9/de-DE/01-welcome-hero.png",
+    );
+    expect(
+      buildExportZipPath(target, "de-DE", 4, "device-bottom", "standard", 2, "my-feature"),
+    ).toBe("apple/iphone-6.9/de-DE/02-my-feature-device-bottom.png");
+    expect(buildExportZipPath(target, "sl", 0, "hero", "flat", 1, "welcome")).toBe(
+      "ios-iphone-69_sl_01-welcome-hero.png",
+    );
+    expect(buildExportZipPath(target, "sl", 0, "hero", "fastlane", 1, "welcome")).toBe(
+      "fastlane/screenshots/sl/iPhone 16 Pro Max-01-welcome.png",
+    );
+  });
 });

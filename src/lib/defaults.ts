@@ -29,6 +29,7 @@ export function makeStarterSlides(_device: Device = "iphone"): Slide[] {
     {
       id: nid(),
       layout: "hero",
+      name: "Welcome",
       label: en("THE ALL-IN-ONE APP"),
       headline: en("Simple.\nPowerful.\nYours."),
       screenshot: "",
@@ -36,6 +37,7 @@ export function makeStarterSlides(_device: Device = "iphone"): Slide[] {
     {
       id: nid(),
       layout: "device-bottom",
+      name: "Workflow",
       label: en("SMART WORKFLOW"),
       headline: en("Focus on what\nmatters most."),
       screenshot: "",
@@ -43,6 +45,7 @@ export function makeStarterSlides(_device: Device = "iphone"): Slide[] {
     {
       id: nid(),
       layout: "device-bottom",
+      name: "Tools",
       label: en("POWERFUL TOOLS"),
       headline: en("Everything you need,\nright at hand."),
       screenshot: "",
@@ -50,6 +53,7 @@ export function makeStarterSlides(_device: Device = "iphone"): Slide[] {
     {
       id: nid(),
       layout: "device-bottom",
+      name: "Sync",
       label: en("REAL-TIME SYNC"),
       headline: en("Seamless across\nevery device."),
       screenshot: "",
@@ -57,6 +61,7 @@ export function makeStarterSlides(_device: Device = "iphone"): Slide[] {
     {
       id: nid(),
       layout: "device-top",
+      name: "Insights",
       label: en("DETAILED INSIGHTS"),
       headline: en("Track progress with\nclarity."),
       screenshot: "",
@@ -65,6 +70,7 @@ export function makeStarterSlides(_device: Device = "iphone"): Slide[] {
     {
       id: nid(),
       layout: "hero",
+      name: "Get started",
       label: en("GET STARTED TODAY"),
       headline: en("Available now\non the App Store."),
       screenshot: "",
@@ -111,11 +117,12 @@ export function makeEmptyProject(): ProjectState {
 export function newSlide(layout: Slide["layout"] = "device-bottom"): Slide {
   // Static screens carry no localizable text — translations ignore them.
   if (layout === "static") {
-    return { id: nid(), layout, label: {}, headline: {}, screenshot: "" };
+    return { id: nid(), layout, name: "Screen", label: {}, headline: {}, screenshot: "" };
   }
   return {
     id: nid(),
     layout,
+    name: "Screen",
     label: en("NEW"),
     headline: en("Edit this\nheadline."),
     screenshot: "",

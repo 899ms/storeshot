@@ -77,6 +77,8 @@ export type CaptionTextStyle = {
 export type Slide = {
   id: string;
   layout: SlideLayout;
+  /** Figma-style screen title (shared across locales). Export uses slugified title. */
+  name?: string;
   label: LocalizedText;       // tiny uppercase caption above headline, per locale
   headline: LocalizedText;    // multi-line; newlines are intentional, per locale
   labelStyle?: CaptionTextStyle;    // typographic overrides; absent = defaults

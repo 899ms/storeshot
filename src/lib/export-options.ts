@@ -72,19 +72,23 @@ export function buildExportZipPath(
   // 1-based position within the selected set. Defaults to deck order; pass
   // the selection position so deselected screens leave no numbering gaps.
   position1Based: number = slideIndex + 1,
+  // Slugified screen title (see slugifyScreenTitle). Empty = legacy layout-only name.
+  titleSlug = "",
 ): string {
   const num = String(position1Based).padStart(2, "0");
-  const filename = `${num}-${layoutName}.png`;
+  const filename = titleSlug ? `${num}-${titleSlug}-${layoutName}.png` : `${num}-${layoutName}.png`;
 
   if (preset === "fastlane") {
-    // fastlane deliver structure: fastlane/screenshots/<locale>/<device>-<num>.png
-    return `fastlane/screenshots/${locale}/${target.fastlaneDeviceName}-${num}.png`;
+    // fastlane deliver structure: fastlane/screenshots/<locale>/<device>-<num>[-title].png
+    const suffix = titleSlug ? `-${titleSlug}` : "";
+    return `fastlane/screenshots/${locale}/${target.fastlaneDeviceName}-${num}${suffix}.png`;
   }
 
   if (preset === "flat") {
-    return `${target.id}_${locale}_${filename}`;
+    const base = titleSlug ? `${num}-${titleSlug}-${layoutName}` : `${num}-${layoutName}`;
+    return `${target.id}_${locale}_${base}.png`;
   }
 
-  // standard preset: apple/device/locale/01-layout.png
+  // standard preset: apple/device/locale/01-title-layout.png
   return `${target.subfolder}/${locale}/${filename}`;
 }
