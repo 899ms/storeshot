@@ -65,6 +65,21 @@
   }
 }
 
+/* Electron shell (macOS hiddenInset): the toolbar doubles as the window drag
+   handle. Interactive descendants opt out so buttons stay clickable and text
+   stays selectable. Web builds never get the class, so this is inert there. */
+.electron-shell-bar {
+  -webkit-app-region: drag;
+}
+.electron-shell-bar button,
+.electron-shell-bar input,
+.electron-shell-bar select,
+.electron-shell-bar textarea,
+.electron-shell-bar a,
+.electron-shell-bar [contenteditable] {
+  -webkit-app-region: no-drag;
+}
+
 /* react-rnd editable element hint: subtle outline + visible resize handles on hover */
 .rnd-editable {
   cursor: move;

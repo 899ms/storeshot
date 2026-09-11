@@ -22,7 +22,17 @@ import {
   findSourceSkips,
   TranslateError,
 } from "@/lib/translate";
-import { useActiveWorkspace } from "@/lib/workspaces";
+import { useActiveWorkspace, workspaceName } from "@/lib/workspaces";
+import {
+  ackFlush,
+  isShell,
+  onMenuAction,
+  reportWorkspace,
+  revealLastExport,
+  setDocumentState,
+  toggleTheme,
+  trackExportSaves,
+} from "@/lib/native";
 import type {
   BuiltInElementId,
   Device,
@@ -59,6 +69,14 @@ import {
   buildExportZipPath,
   getExportTargetById,
 } from "@/lib/export-options";
+import {
+  bundleExportDoneMessage,
+  clearExportProgress,
+  notifyExportDone,
+  reportExportIndeterminate,
+  reportExportProgress,
+  stoppedExportMessage,
+} from "@/lib/export-notify";
 
 export function ScreenshotEditor() {
   const workspace = useActiveWorkspace();
@@ -272,9 +290,13 @@ export function ScreenshotEditor() {
     }
   }, [saveNow]);
 
-  // Cmd/Ctrl+S saves even from inside text inputs.
+  // Cmd/Ctrl+S saves even from inside text inputs. Inside the Electron
+  // shell the native File → Save item covers this app-wide (including text
+  // inputs), so the page handler stays as the web-only fallback — otherwise
+  // every save would fire twice.
   React.useEffect(() => {
     function onSaveKey(e: KeyboardEvent) {
+      if (isShell()) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         void handleSaveNow();
@@ -283,6 +305,95 @@ export function ScreenshotEditor() {
     window.addEventListener("keydown", onSaveKey);
     return () => window.removeEventListener("keydown", onSaveKey);
   }, [handleSaveNow]);
+
+  // Native menu actions (N3): File and View items drive the same handlers as
+  // the toolbar buttons. Undo/redo respect text focus — native text undo
+  // inside inputs, canvas history everywhere else.
+  React.useEffect(() => {
+    function focusInEditable(): boolean {
+      const t = document.activeElement as HTMLElement | null;
+      return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+    }
+    return onMenuAction((action, payload) => {
+      switch (action) {
+        case "save":
+          void handleSaveNow();
+          break;
+        case "export":
+          if (!exporting) setExportDialogOpen(true);
+          break;
+        case "open-settings":
+          setSettingsOpen(true);
+          break;
+        case "open-error-log":
+          setErrorLogOpen(true);
+          break;
+        case "toggle-theme":
+          toggleTheme();
+          break;
+        case "undo":
+          if (focusInEditable()) document.execCommand("undo");
+          else undo();
+          break;
+        case "redo":
+          if (focusInEditable()) document.execCommand("redo");
+          else redo();
+          break;
+        case "request-flush":
+          // Quit-guard (N4): persist immediately, then let the window close.
+          // No toasts — the window is going away.
+          void (async () => {
+            try {
+              await saveNow();
+            } finally {
+              ackFlush();
+            }
+          })();
+          break;
+        case "open-workspace-picker":
+          window.dispatchEvent(new CustomEvent("storeshot:pick-workspace-native"));
+          break;
+        case "open-workspace-path":
+          if (typeof payload === "string" && payload) {
+            window.dispatchEvent(
+              new CustomEvent<string>("storeshot:open-workspace-path", { detail: payload }),
+            );
+          }
+          break;
+        case "reveal-workspace":
+          window.dispatchEvent(new CustomEvent("storeshot:reveal-workspace"));
+          break;
+        default:
+          break;
+      }
+    });
+  }, [handleSaveNow, saveNow, undo, redo, exporting]);
+
+  // Dirty-document reporting for the native close dot + quit guard (N4), and
+  // workspace reporting for recents/Dock (N5). All shell-only no-ops on web.
+  const pushDocumentState = React.useCallback(
+    (dirty: boolean) => {
+      const title = `${state.appName?.trim() || "Untitled"} — ${workspaceName(workspace)}`;
+      document.title = `${dirty ? "• " : ""}${title} — StoreShot`;
+      setDocumentState(dirty, `${title} — StoreShot`);
+    },
+    [state.appName, workspace],
+  );
+  React.useEffect(() => {
+    if (!hydrated) return;
+    pushDocumentState(true);
+  }, [state, hydrated, pushDocumentState]);
+  React.useEffect(() => {
+    if (!hydrated || saving) return;
+    pushDocumentState(false);
+  }, [savedAt, saving, hydrated, pushDocumentState]);
+  React.useEffect(() => {
+    if (!hydrated) return;
+    reportWorkspace(workspace);
+  }, [workspace, hydrated]);
+  React.useEffect(() => {
+    trackExportSaves();
+  }, []);
 
   // Global error capture: uncaught exceptions and unhandled rejections land
   // in the error log and surface as toasts.
@@ -763,6 +874,7 @@ export function ScreenshotEditor() {
       if (stopExportRef.current) break;
       done += 1;
       setExporting(`${done}/${totalUnits}`);
+      reportExportProgress(done, totalUnits);
       await runUnit(u, 2);
     }
 
@@ -775,6 +887,7 @@ export function ScreenshotEditor() {
         if (stopExportRef.current) break;
         ri += 1;
         setExporting(`retry ${ri}/${retryList.length}`);
+        reportExportIndeterminate();
         await preloadImages(unitAssetPaths(u), { retryFailed: true });
         await runUnit(u, 2);
       }
@@ -787,6 +900,7 @@ export function ScreenshotEditor() {
     const wasStopped = stopExportRef.current;
     setExportLocaleOverride(null);
     setExporting(null);
+    clearExportProgress();
 
     if (wasStopped) {
       if (okCount > 0) {
@@ -805,6 +919,7 @@ export function ScreenshotEditor() {
       } else {
         toast.info("Export stopped.");
       }
+      notifyExportDone(stoppedExportMessage(okCount));
       return;
     }
 
@@ -825,6 +940,7 @@ export function ScreenshotEditor() {
         toast.error("Couldn't bundle export");
         reportError("export", "Couldn't bundle export", e instanceof Error ? e.message : String(e));
         console.error(e);
+        notifyExportDone({ title: "Export failed", body: "Couldn't bundle export." });
         return;
       }
     }
@@ -837,7 +953,11 @@ export function ScreenshotEditor() {
     const fullDetail = [...errors, ...missingPaths.map((p) => `${p}: missing from bundle`)];
     const summary = `${targets.length} target${targets.length === 1 ? "" : "s"} × ${locales.length} locale${locales.length === 1 ? "" : "s"} × ${targetSlideIndices.length} screen${targetSlideIndices.length === 1 ? "" : "s"}`;
     if (failed === 0 && missingPaths.length === 0) {
-      toast.success(`Exported ${okCount} PNGs (${summary})`);
+      toast.success(`Exported ${okCount} PNGs (${summary})`, {
+        ...(isShell()
+          ? { action: { label: "Reveal in Finder", onClick: () => revealLastExport() } }
+          : {}),
+      });
     } else if (okCount === 0) {
       reportError("export", `All ${failed} renders failed (${summary})`, fullDetail.slice(0, 40).join("\n"));
       toast.error(`All ${failed} renders failed — nothing exported`, {
@@ -854,6 +974,7 @@ export function ScreenshotEditor() {
         duration: 10000,
       });
     }
+    notifyExportDone(bundleExportDoneMessage(okCount, failed, totalUnits));
   }
 
   async function exportActiveSlide() {
@@ -875,6 +996,7 @@ export function ScreenshotEditor() {
 
     stopExportRef.current = false;
     setExporting("1/1");
+    reportExportIndeterminate();
     setExportSlideIndex(idx);
     setExportLocaleOverride(state.locale);
 
@@ -905,6 +1027,7 @@ export function ScreenshotEditor() {
     if (!el) {
       toast.error("Render target missing");
       setExporting(null);
+      clearExportProgress();
       setExportLocaleOverride(null);
       return;
     }
@@ -918,7 +1041,15 @@ export function ScreenshotEditor() {
         const num = String(idx + 1).padStart(2, "0");
         a.download = `${slugify(state.appName)}-${platform}-${state.device}-${num}-${activeSlide.layout}-${state.locale}-${size.w}x${size.h}.png`;
         a.click();
-        toast.success(`Exported screen ${idx + 1} (${size.w}×${size.h})`);
+        toast.success(`Exported screen ${idx + 1} (${size.w}×${size.h})`, {
+          ...(isShell()
+            ? { action: { label: "Reveal in Finder", onClick: () => revealLastExport() } }
+            : {}),
+        });
+        notifyExportDone({
+          title: "Export complete",
+          body: `Exported screen ${idx + 1} (${size.w}×${size.h}).`,
+        });
       } else {
         const { default: JSZip } = await import("jszip");
         const zip = new JSZip();
@@ -937,15 +1068,25 @@ export function ScreenshotEditor() {
         a.download = `${slugify(state.appName)}-${platform}-${state.device}-${num}-${state.locale}.zip`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
-        toast.success(`Exported screen ${idx + 1} (${sizes.length} sizes)`);
+        toast.success(`Exported screen ${idx + 1} (${sizes.length} sizes)`, {
+          ...(isShell()
+            ? { action: { label: "Reveal in Finder", onClick: () => revealLastExport() } }
+            : {}),
+        });
+        notifyExportDone({
+          title: "Export complete",
+          body: `Exported screen ${idx + 1} (${sizes.length} sizes).`,
+        });
       }
     } catch (err) {
       console.error("Single screen export failed", err);
       const message = err instanceof Error ? err.message : String(err);
       reportError("export", `Single screen export failed (screen ${idx + 1})`, message);
       toast.error("Export failed: " + message);
+      notifyExportDone({ title: "Export failed", body: message });
     } finally {
       setExporting(null);
+      clearExportProgress();
       setExportLocaleOverride(null);
     }
   }

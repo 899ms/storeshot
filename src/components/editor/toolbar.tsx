@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, ArrowUp, Bug, Check, ChevronRight, Cloud, Download, Folder, FolderOpen, Home, Languages, Loader2, RotateCcw, Save, Settings, Smartphone, Square, Tablet, UnfoldHorizontal, X } from "lucide-react";
+import { AlertTriangle, ArrowUp, Bug, Check, ChevronRight, Cloud, Download, Folder, FolderOpen, FolderSearch, Home, Languages, Loader2, RotateCcw, Save, Settings, Smartphone, Square, Tablet, UnfoldHorizontal, X } from "lucide-react";
+import { isMacShell, revealPath } from "@/lib/native";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -74,8 +75,13 @@ export function Toolbar(props: Props) {
   const showLocale = props.locales.length > 1;
   const deviceLabel = DEVICE_LABEL[props.device] ?? "iPhone";
 
+  // Inside the macOS shell the window uses hiddenInset traffic lights, so the
+  // bar clears them on the left and doubles as the window drag handle.
+  const shellBar = isMacShell();
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b bg-card/40 px-4 py-2">
+    <div
+      className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b bg-card/40 px-4 py-2${shellBar ? " electron-shell-bar pl-[76px]" : ""}`}
+    >
       <WorkspaceSwitcher disabled={props.busy} />
       <Input
         value={props.appName}
@@ -271,7 +277,7 @@ export function Toolbar(props: Props) {
             onClick={props.onExport}
             size="sm"
             className="h-8 gap-1.5"
-            title={`Export ${deviceLabel} App Store screenshot bundle as zip`}
+            title={`Export ${deviceLabel} App Store screenshot bundle as zip (Cmd/Ctrl+E)`}
           >
             <Download className="h-4 w-4" />
             Export
@@ -441,6 +447,33 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
     }
   }
 
+  // Latest handlers for the native-menu event listeners below (stable
+  // subscription, always calls the current render's functions).
+  const handlersRef = React.useRef({ pickWorkspaceNative, activateValidatedPath, active });
+  handlersRef.current = { pickWorkspaceNative, activateValidatedPath, active };
+
+  // Native menu events from the editor root (N3/N5/N6): the app menu can't
+  // reach this component's props, so actions arrive as window events.
+  React.useEffect(() => {
+    const onPickNative = () => void handlersRef.current.pickWorkspaceNative();
+    const onOpenPath = (e: Event) => {
+      const dir = (e as CustomEvent<string>).detail;
+      if (typeof dir === "string" && dir) void handlersRef.current.activateValidatedPath(dir);
+    };
+    const onReveal = () => {
+      const ws = handlersRef.current.active;
+      if (ws) void revealPath(ws);
+    };
+    window.addEventListener("storeshot:pick-workspace-native", onPickNative);
+    window.addEventListener("storeshot:open-workspace-path", onOpenPath);
+    window.addEventListener("storeshot:reveal-workspace", onReveal);
+    return () => {
+      window.removeEventListener("storeshot:pick-workspace-native", onPickNative);
+      window.removeEventListener("storeshot:open-workspace-path", onOpenPath);
+      window.removeEventListener("storeshot:reveal-workspace", onReveal);
+    };
+  }, []);
+
   // Packaged (Electron) builds pick folders through the native dialog so the
   // choice carries a sandbox Powerbox grant. Web builds use the in-app
   // browser below instead.
@@ -566,6 +599,18 @@ function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
               </span>
             </DropdownMenuItem>
           )}
+          {typeof window !== "undefined" && window.storeshot?.revealPath && active ? (
+            <DropdownMenuItem
+              onSelect={() => {
+                void revealPath(active);
+              }}
+            >
+              <span className="flex w-full items-center gap-2">
+                <FolderSearch className="h-3.5 w-3.5 text-muted-foreground" />
+                Reveal in Finder
+              </span>
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 

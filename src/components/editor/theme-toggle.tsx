@@ -26,6 +26,15 @@ export function ThemeToggle({ disabled }: { disabled?: boolean }) {
     setDark(next);
   };
 
+  // Stay in sync when the theme is toggled from the native View menu.
+  React.useEffect(() => {
+    const onExternal = (e: Event) => {
+      setDark((e as CustomEvent<boolean>).detail);
+    };
+    window.addEventListener("storeshot:theme-changed", onExternal);
+    return () => window.removeEventListener("storeshot:theme-changed", onExternal);
+  }, []);
+
   return (
     <Button
       type="button"
