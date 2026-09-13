@@ -7,6 +7,7 @@ import type { ProjectState } from "../lib/types";
 import { isProjectShape, loadProject, McpError, saveProject, storeUpload } from "./project-io";
 import {
   addSlide,
+  copySlides,
   deleteSlide,
   lintDeck,
   listSlides,
@@ -63,6 +64,21 @@ describe("mcp tools", () => {
     expect(() => setBackground(state(), { kind: "mesh", colors: ["red"] })).toThrow(McpError);
     const b = setBackground(state(), { kind: "mesh", colors: ["#ffffff", "#000000"] });
     expect(b.background).toMatchObject({ kind: "mesh" });
+  });
+
+  it("copies slides across devices and guards replace", () => {
+    let s = state();
+    const a = addSlide(s, { name: "Welcome" });
+    s = a.state;
+    expect(() => copySlides(s, { from: "phone", to: ["tablet"], mode: "replace" })).toThrow(McpError);
+    const appended = copySlides(s, { from: "phone", to: ["tablet"], mode: "append" });
+    expect(appended.copied).toBe(1);
+    expect(appended.targets).toEqual(["tablet"]);
+    expect(appended.state.slidesByDevice.tablet).toHaveLength(1);
+    expect(appended.state.slidesByDevice.phone[0].id).toBe(a.slideId);
+    const replaced = copySlides(appended.state, { from: "phone", to: ["tablet"], mode: "replace", confirm: true });
+    expect(replaced.state.slidesByDevice.tablet).toHaveLength(1);
+    expect(replaced.state.slidesByDevice.tablet[0].id).not.toBe(appended.state.slidesByDevice.tablet[0].id);
   });
 
   it("rejects inline screenshot data urls", () => {

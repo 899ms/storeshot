@@ -279,3 +279,14 @@ items at the README sections (Workspaces, Exporting, Error log).
 - [x] All Phase 6 acceptance criteria met; packaged app verified on user machine
 - [x] `npm run build` + `typecheck` + `lint` + `test` green; web workflow untouched
 - [x] No new MAS entitlements required; review with human before E6/E7 submission steps
+
+## Copy screens across devices
+
+Plan: `tasks/plan-copy-across-devices.md` · Tasks: `tasks/todo-copy-across-devices.md`
+
+- [x] Task 1: Pure clone + geometry adapt
+- [x] Task 2: `copySlidesToDevices`
+- [x] Task 3: Copy screens dialog
+- [x] Task 4: Wire dialog, toolbar, empty-state CTA
+- [x] Task 5: MCP `copy_slides` tool
+- [x] Task 6: Shortcuts + replace-label + disabled edges

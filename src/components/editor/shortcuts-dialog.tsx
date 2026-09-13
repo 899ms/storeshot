@@ -13,6 +13,7 @@ const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "⌘/Ctrl + Z", action: "Undo" },
   { keys: "⌘/Ctrl + Shift + Z", action: "Redo" },
   { keys: "⌘/Ctrl + D", action: "Duplicate Screen / Selected Text" },
+  { keys: "Menu → Copy screens to…", action: "Copy Screens to Another Device" },
   { keys: "⌘/Ctrl + C / V", action: "Copy / Paste Selected Text" },
   { keys: "⌘/Ctrl + ⌫", action: "Delete Screen" },
   { keys: "T", action: "Add Text Element" },

@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Download, Keyboard, Languages, Loader2, Monitor, MoreHorizontal, Plus, Redo, RotateCcw, Save, Settings, Smartphone, Sparkles, Square, Tablet, Undo, UnfoldHorizontal } from "lucide-react";
+import { CopyPlus, Download, Keyboard, Languages, Loader2, Monitor, MoreHorizontal, Plus, Redo, RotateCcw, Save, Settings, Smartphone, Sparkles, Square, Tablet, Undo, UnfoldHorizontal } from "lucide-react";
 import { isMacShell } from "@/lib/native";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +48,8 @@ type Props = {
   onOpenTranslate: () => void;
   onShowOnboarding?: () => void;
   onShowShortcuts?: () => void;
+  onOpenCopyScreens?: () => void;
+  canCopyScreens?: boolean;
   onStopExport?: () => void;
   onResetAll: () => void;
   onResetDevice?: () => void;
@@ -319,6 +321,20 @@ export function Toolbar(props: Props) {
                     : `Translate locale (${props.locale})`}
                 </span>
               </DropdownMenuItem>
+            ) : null}
+            {props.onOpenCopyScreens ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => props.onOpenCopyScreens?.()}
+                  disabled={props.busy || props.canCopyScreens === false}
+                >
+                  <span className="flex w-full items-center gap-2">
+                    <CopyPlus className="h-3.5 w-3.5 text-muted-foreground" />
+                    Copy screens to…
+                  </span>
+                </DropdownMenuItem>
+              </>
             ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => setResetOpen(true)} disabled={props.busy}>

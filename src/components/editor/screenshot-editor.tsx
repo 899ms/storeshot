@@ -8,6 +8,12 @@ import {
   hasTheme,
   themeById,
 } from "@/lib/constants";
+import {
+  CopySlidesError,
+  copySlidesToDevices,
+  richestOtherDevice,
+} from "@/lib/copy-slides";
+import type { CopyScreensRequest } from "./copy-screens-dialog";
 import { detectPlatform, makeStarterSlides, newSlide, nid } from "@/lib/defaults";
 import { slugifyScreenTitle } from "@/lib/screen-title";
 import { isBuiltInElementId, isTextElementId, textElementKey, toTextElementId } from "@/lib/elements";
@@ -75,6 +81,9 @@ const OnboardingDialog = dynamic(() =>
 const ShortcutsDialog = dynamic(() =>
   import("./shortcuts-dialog").then((m) => m.ShortcutsDialog),
 );
+const CopyScreensDialog = dynamic(() =>
+  import("./copy-screens-dialog").then((m) => m.CopyScreensDialog),
+);
 import {
   type ExportConfig,
   type ExportTarget,
@@ -117,6 +126,9 @@ export function ScreenshotEditor() {
   const [settingsTab, setSettingsTab] = React.useState<string | undefined>(undefined);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [translateOpen, setTranslateOpen] = React.useState(false);
+  const [copyOpen, setCopyOpen] = React.useState(false);
+  const [copyFrom, setCopyFrom] = React.useState<Device>("phone");
+  const [copyPresetTo, setCopyPresetTo] = React.useState<Device[] | undefined>(undefined);
   const [ready, setReady] = React.useState(false);
   const [translatingLocale, setTranslatingLocale] = React.useState(false);
   const translateLocaleAbortRef = React.useRef<AbortController | null>(null);
@@ -128,6 +140,10 @@ export function ScreenshotEditor() {
 
   const currentSlides = React.useMemo(
     () => state.slidesByDevice[state.device] || [],
+    [state.slidesByDevice, state.device],
+  );
+  const copySource = React.useMemo(
+    () => richestOtherDevice(state.slidesByDevice, state.device),
     [state.slidesByDevice, state.device],
   );
   // Translation source is always the default locale ("en"). All AI
@@ -631,6 +647,35 @@ export function ScreenshotEditor() {
       setActiveSlideId(slide.id);
     },
     [setState],
+  );
+
+  const openCopyScreens = React.useCallback(
+    (from: Device, presetTo?: Device[]) => {
+      setCopyFrom(from);
+      setCopyPresetTo(presetTo);
+      setCopyOpen(true);
+    },
+    [],
+  );
+
+  const handleCopyScreens = React.useCallback(
+    (req: CopyScreensRequest) => {
+      try {
+        const result = copySlidesToDevices(state, req);
+        setState({ ...result.state, device: result.targets[0] });
+        setCopyOpen(false);
+        setActiveSlideId(result.firstSlideId);
+        const labels = result.targets.map((d) => DEVICE_LABEL[d]).join(" and ");
+        const n = result.copied;
+        toast.success(`Copied ${n} ${n === 1 ? "screen" : "screens"} to ${labels}`, {
+          description: "Layouts adapt to the new canvas — nudge elements as needed.",
+        });
+      } catch (err) {
+        const message = err instanceof CopySlidesError ? err.message : "Couldn't copy screens";
+        toast.error("Couldn't copy screens", { description: message });
+      }
+    },
+    [setState, state],
   );
 
   const patchLocalized = React.useCallback(
@@ -1695,6 +1740,8 @@ export function ScreenshotEditor() {
         onOpenTranslate={() => setTranslateOpen(true)}
         onShowOnboarding={() => setOnboardingOpen(true)}
         onShowShortcuts={() => setShortcutsOpen(true)}
+        onOpenCopyScreens={() => openCopyScreens(state.device)}
+        canCopyScreens={currentSlides.length > 0 && !translatingLocale}
         onStopExport={stopExport}
         translatableCount={translatableCount}
         translatingLocale={translatingLocale}
@@ -1721,6 +1768,17 @@ export function ScreenshotEditor() {
       <ErrorLogDialog open={errorLogOpen} onOpenChange={setErrorLogOpen} />
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+
+      <CopyScreensDialog
+        open={copyOpen}
+        onOpenChange={setCopyOpen}
+        from={copyFrom}
+        presetTo={copyPresetTo}
+        slidesByDevice={state.slidesByDevice}
+        activeSlideId={copyFrom === state.device ? activeSlideId : null}
+        disabled={busy || translatingLocale}
+        onCopy={handleCopyScreens}
+      />
 
       <SettingsDialog
         open={settingsOpen}
@@ -1945,14 +2003,27 @@ export function ScreenshotEditor() {
                   ? "Nothing has been added here yet — your screens, uploads, and project file live in this workspace's screenshots/ folder. Add Your First Screen to get started."
                   : "Add a Screen on the left to get started."}
               </p>
-              <Button
-                type="button"
-                size="sm"
-                disabled={busy}
-                onClick={() => addSlide(newSlide())}
-              >
-                Add Your First Screen
-              </Button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => addSlide(newSlide())}
+                >
+                  Add Your First Screen
+                </Button>
+                {copySource ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy || translatingLocale}
+                    onClick={() => openCopyScreens(copySource.device, [state.device])}
+                  >
+                    Copy from {DEVICE_LABEL[copySource.device]} ({copySource.count})
+                  </Button>
+                ) : null}
+              </div>
             </div>
           )}
         </main>

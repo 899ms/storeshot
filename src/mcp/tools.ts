@@ -7,6 +7,7 @@
 
 import { buildExportZipPath, EXPORT_TARGETS, type FolderPreset } from "../lib/export-options";
 import { exportFolderForLocale, writeLocalized, type StoreKind } from "../lib/locale";
+import { CopySlidesError, copySlidesToDevices, type CopySlidesMode } from "../lib/copy-slides";
 import { newSlide } from "../lib/defaults";
 import { slugifyScreenTitle } from "../lib/screen-title";
 import type { Device, ProjectState, ScreenBackground, Slide, SlideLayout } from "../lib/types";
@@ -185,6 +186,30 @@ export function deleteSlide(state: ProjectState, args: { slideId: unknown; devic
   const { device, slides } = deviceSlides(state, args.device);
   findSlide(slides, args.slideId);
   return setDeviceSlides(state, device, slides.filter((s) => s.id !== args.slideId));
+}
+
+export function copySlides(
+  state: ProjectState,
+  args: { from?: unknown; to?: unknown; mode?: unknown; slideIds?: unknown; confirm?: unknown },
+) {
+  const from = resolveDevice(args.from, state.device);
+  const toRaw = args.to;
+  const toList = Array.isArray(toRaw) ? toRaw : toRaw != null ? [toRaw] : [];
+  const to = toList.map((d) => resolveDevice(d, undefined));
+  let mode: CopySlidesMode;
+  if (args.mode == null || args.mode === "append") mode = "append";
+  else if (args.mode === "replace") mode = "replace";
+  else throw new McpError("mode must be append|replace");
+  if (mode === "replace" && args.confirm !== true) {
+    throw new McpError("Replace needs {confirm:true} (destructive)");
+  }
+  const slideIds = Array.isArray(args.slideIds) ? args.slideIds.map(String) : undefined;
+  try {
+    return copySlidesToDevices(state, { from, to, mode, slideIds });
+  } catch (err) {
+    if (err instanceof CopySlidesError) throw new McpError(err.message);
+    throw err;
+  }
 }
 
 export function setLocales(state: ProjectState, args: { locales: unknown; confirm?: unknown }): ProjectState {

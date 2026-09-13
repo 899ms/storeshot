@@ -11,6 +11,7 @@ import { listUploads, loadProject, McpError, saveProject, storeUpload } from "./
 import { runProviderTranslation } from "./translate-job";
 import {
   addSlide,
+  copySlides,
   deleteSlide,
   getProjectSummary,
   lintDeck,
@@ -58,6 +59,7 @@ const TOOLS: { name: string; description: string; inputSchema: Record<string, Js
   { name: "set_layout", description: "Change a slide layout.", inputSchema: { type: "object", properties: { workspace: { type: "string" }, slideId: { type: "string" }, layout: { type: "string" } }, required: ["workspace", "slideId", "layout"] } },
   { name: "reorder_slides", description: "Reorder deck (all ids, new order).", inputSchema: { type: "object", properties: { workspace: { type: "string" }, orderedIds: { type: "array" } }, required: ["workspace", "orderedIds"] } },
   { name: "delete_slide", description: "Delete a slide (needs confirm:true).", inputSchema: { type: "object", properties: { workspace: { type: "string" }, slideId: { type: "string" }, confirm: { type: "boolean" } }, required: ["workspace", "slideId"] } },
+  { name: "copy_slides", description: "Copy screens from one device onto another (elements included; layout adapted). Replace needs confirm:true.", inputSchema: { type: "object", properties: { workspace: { type: "string" }, from: { type: "string" }, to: { type: "array" }, mode: { type: "string" }, slideIds: { type: "array" }, confirm: { type: "boolean" } }, required: ["workspace", "from", "to"] } },
   { name: "set_locales", description: "Replace locale list (must keep en; removals need confirm:true).", inputSchema: { type: "object", properties: { workspace: { type: "string" }, locales: { type: "array" } }, required: ["workspace", "locales"] } },
   { name: "set_background", description: "Set project or per-slide background (theme|mesh|image).", inputSchema: { type: "object", properties: { workspace: { type: "string" }, kind: { type: "string" } }, required: ["workspace", "kind"] } },
   { name: "set_screenshot", description: "Point a slide at an uploads/... path (upload_image first).", inputSchema: { type: "object", properties: { workspace: { type: "string" }, slideId: { type: "string" }, path: { type: "string" } }, required: ["workspace", "slideId", "path"] } },
@@ -109,6 +111,12 @@ const toolHandlers: Record<string, Handler> = {
     const { ws, state } = await needProject(p);
     await saveProject(ws, deleteSlide(state, p as { slideId: unknown; device?: unknown; confirm?: unknown }));
     return { ok: true };
+  },
+  copy_slides: async (p) => {
+    const { ws, state } = await needProject(p);
+    const result = copySlides(state, p);
+    await saveProject(ws, result.state);
+    return { ok: true, copied: result.copied, firstSlideId: result.firstSlideId, targets: result.targets };
   },
   set_locales: async (p) => {
     const { ws, state } = await needProject(p);
