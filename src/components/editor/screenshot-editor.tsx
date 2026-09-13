@@ -55,6 +55,7 @@ import { Button } from "@/components/ui/button";
 import { Inspector } from "./inspector";
 import { PreviewStage } from "./preview-stage";
 import { Sidebar } from "./sidebar";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 import { DeckCanvas, getCanvas, getElementTransform } from "./slide-canvas";
 import { alignRect } from "@/lib/snap";
 import type { AlignMode } from "@/lib/snap";
@@ -1906,11 +1907,17 @@ export function ScreenshotEditor() {
             <Button
               type="button"
               onClick={() =>
-                window.dispatchEvent(new CustomEvent("open-workspace-dialog"))
+                window.dispatchEvent(new CustomEvent("storeshot:pick-workspace-native"))
               }
             >
               Open folder…
             </Button>
+            {/* The Sidebar (which owns the workspace picker) isn't mounted
+                until a workspace is active, so mount its dialog here to answer
+                this gate's Open folder button. The native-pick event uses the
+                Finder dialog in the packaged app and falls back to the in-app
+                folder browser on plain web. */}
+            <WorkspaceSwitcher dialogOnly />
           </div>
         ) : (
         <>

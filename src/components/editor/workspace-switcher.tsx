@@ -28,7 +28,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-export function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
+export function WorkspaceSwitcher({
+  disabled,
+  dialogOnly,
+}: {
+  disabled?: boolean;
+  // Render only the open-folder dialog (plus its window-event listeners) with
+  // no visible trigger. Used by the no-workspace gate, which has no Sidebar —
+  // and therefore no other WorkspaceSwitcher instance — mounted to answer its
+  // Open folder button.
+  dialogOnly?: boolean;
+}) {
   const active = useActiveWorkspace();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [recents, setRecents] = React.useState<string[]>([]);
@@ -209,6 +219,7 @@ export function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
 
   return (
     <>
+      {!dialogOnly && (
       <DropdownMenu
         open={menuOpen}
         onOpenChange={(open) => {
@@ -327,6 +338,7 @@ export function WorkspaceSwitcher({ disabled }: { disabled?: boolean }) {
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      )}
 
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>
         <DialogContent className="max-w-lg">
