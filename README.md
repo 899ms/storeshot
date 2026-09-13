@@ -1,7 +1,7 @@
 # StoreShot
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/stackwares/storeshot-electron/actions/workflows/ci.yml/badge.svg)](https://github.com/stackwares/storeshot-electron/actions/workflows/ci.yml)
+[![CI](https://github.com/stackwares/storeshot/actions/workflows/ci.yml/badge.svg)](https://github.com/stackwares/storeshot/actions/workflows/ci.yml)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20web-lightgrey.svg)
 [![Electron](https://img.shields.io/badge/desktop-Electron-47848F.svg)](electron/main.js)
 [![Next.js](https://img.shields.io/badge/web-Next.js-black.svg)](https://nextjs.org/)
@@ -33,7 +33,7 @@ store-ready export.
 ## Install (macOS)
 
 Download the latest **StoreShot-…dmg** from
-[Releases](https://github.com/stackwares/storeshot-electron/releases)
+[Releases](https://github.com/stackwares/storeshot/releases)
 (universal — Apple Silicon and Intel). Open the DMG, drag **StoreShot** into
 Applications, and launch. Builds are Developer ID signed and notarized, so
 Gatekeeper should not block them.

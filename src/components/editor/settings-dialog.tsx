@@ -297,7 +297,7 @@ function AboutTab() {
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">Built by Stackwares</span>
           <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" asChild>
-            <a href="https://github.com/stackwares/storeshot-electron" target="_blank" rel="noreferrer">
+            <a href="https://github.com/stackwares/storeshot" target="_blank" rel="noreferrer">
               GitHub <ExternalLink className="h-3 w-3" />
             </a>
           </Button>

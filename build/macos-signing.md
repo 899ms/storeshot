@@ -2,7 +2,7 @@
 
 Public GitHub releases are **Developer ID signed + notarized universal DMGs**
 (Apple Silicon + Intel). Gatekeeper-clean installs work for anyone who
-downloads from the [Releases page](https://github.com/stackwares/storeshot-electron/releases).
+downloads from the [Releases page](https://github.com/stackwares/storeshot/releases).
 
 ## What users get
 
