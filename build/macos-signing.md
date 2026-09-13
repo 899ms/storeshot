@@ -5,10 +5,10 @@
 1. Swap in the real icon: replace `build/icon-master.png` (currently a
    placeholder — DO NOT SHIP it), then `./build/make-icon.sh`.
 2. In `package.json`, remove `"identity": null` from `build.mac` so
-   electron-builder uses your Developer ID (this machine already has
-   `Developer ID Application: Oliver Martinez (V8V5US964Z)`).
+   electron-builder uses your Developer ID Application certificate.
 3. Notarize via environment (electron-builder picks these up automatically):
-   `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID=V8V5US964Z`.
+   `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` (your
+   10-character Team ID from the Apple Developer portal).
 4. `npm run dist:mac` → Gatekeeper-clean, notarized dmg in `dist/`.
 
 ## E7 — Mac App Store target

@@ -1,7 +1,24 @@
 {
-  "name": "app-store-screenshots",
+  "name": "storeshot",
   "version": "0.1.0",
-  "private": true,
+  "description": "StoreShot — design App Store and Google Play marketing screenshots on a connected canvas.",
+  "license": "MIT",
+  "author": "Stackwares",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stackwares/storeshot-electron.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stackwares/storeshot-electron/issues"
+  },
+  "homepage": "https://github.com/stackwares/storeshot-electron#readme",
+  "keywords": [
+    "app-store",
+    "screenshots",
+    "aso",
+    "electron",
+    "nextjs"
+  ],
   "scripts": {
     "dev": "next dev",
     "dev:turbo": "next dev --turbopack",

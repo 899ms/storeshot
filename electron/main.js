@@ -295,6 +295,31 @@ function createWindow(baseUrl) {
   attachSpellcheckMenu(mainWindow);
   attachDownloadHandling(mainWindow);
 
+  // External links (Settings → About, …) open in the system browser, never
+  // as an in-app window or navigation. Same-origin app traffic is untouched.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) {
+      void shell.openExternal(url);
+      return { action: "deny" };
+    }
+    return { action: "allow" };
+  });
+  let appOrigin = "";
+  try {
+    appOrigin = new URL(baseUrl).origin;
+  } catch {
+    // Unparseable base — fall through to denying off-origin navigations.
+  }
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    try {
+      if (appOrigin && new URL(url).origin === appOrigin) return;
+    } catch {
+      return;
+    }
+    event.preventDefault();
+    if (/^https?:/.test(url)) void shell.openExternal(url);
+  });
+
   mainWindow.webContents.on("did-finish-load", () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.__devRetries = 0;
   });

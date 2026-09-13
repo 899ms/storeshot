@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { toast } from "sonner";
-import { Check, FlaskConical, Globe, Image as ImageIcon, KeyRound, Plus, RotateCcw, Smartphone, Trash2, Type } from "lucide-react";
+import { Check, ExternalLink, FlaskConical, Globe, Image as ImageIcon, Info, KeyRound, Plus, RotateCcw, Smartphone, Trash2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -42,6 +42,7 @@ import {
 import type { CanvasSize, Device, FrameFinish, GlobalTextStyle, ScreenBackground } from "@/lib/types";
 import { BackgroundEditor } from "./background-controls";
 import { Slider } from "@/components/ui/slider";
+import { getAppVersion } from "@/lib/native";
 import { cn } from "@/lib/utils";
 
 const FRAME_FINISHES: { id: FrameFinish; label: string; swatch: string }[] = [
@@ -146,6 +147,9 @@ export function SettingsDialog({
               </TabsTrigger>
               <TabsTrigger value="locales" className="gap-1.5 text-xs">
                 <Globe className="h-3.5 w-3.5" /> Locales ({locales.length})
+              </TabsTrigger>
+              <TabsTrigger value="about" className="gap-1.5 text-xs">
+                <Info className="h-3.5 w-3.5" /> About
               </TabsTrigger>
             </TabsList>
           </div>
@@ -267,10 +271,48 @@ export function SettingsDialog({
                 }}
               />
             </TabsContent>
+            <TabsContent value="about" className="mt-0 space-y-4">
+              <AboutTab />
+            </TabsContent>
           </div>
         </Tabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AboutTab() {
+  const appVersion = getAppVersion();
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold">
+          StoreShot{appVersion ? ` ${appVersion}` : ""}
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Design App Store and Google Play marketing screenshots on a connected canvas.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">Built by Stackwares</span>
+          <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" asChild>
+            <a href="https://github.com/stackwares/storeshot-electron" target="_blank" rel="noreferrer">
+              GitHub <ExternalLink className="h-3 w-3" />
+            </a>
+          </Button>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">Founder — Oliver Martinez</span>
+          <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" asChild>
+            <a href="https://bio.nexl.ink/oliverbytes" target="_blank" rel="noreferrer">
+              Bio <ExternalLink className="h-3 w-3" />
+            </a>
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">MIT licensed — see LICENSE in the repo.</p>
+      </div>
+    </div>
   );
 }
 

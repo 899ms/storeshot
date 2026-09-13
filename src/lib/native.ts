@@ -100,6 +100,12 @@ export function onExportSaved(callback: (path: string) => void): () => void {
   }
 }
 
+/** App version from the shell bridge. Null on plain web builds. */
+export function getAppVersion(): string | null {
+  const v = window.storeshot?.versions?.app;
+  return typeof v === "string" && v ? v : null;
+}
+
 function applyTheme(dark: boolean): void {
   document.documentElement.classList.toggle("dark", dark);
   try {

@@ -5,4 +5,13 @@ dist
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+# Local env / secrets — never commit
+.env
 .env*.local
+# Logs, coverage, OS noise
+*.log
+coverage/
+# Internal planning + scaffolding notes (kept locally, not published)
+tasks/
+agent/
+skills-lock.json
