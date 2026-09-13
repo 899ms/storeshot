@@ -16,3 +16,12 @@ tasks/
 agent/
 skills-lock.json
 _site/
+# Signing / notarization material — never commit
+*.p12
+*.p8
+*.cer
+*.mobileprovision
+AuthKey_*.p8
+.env
+.env.*
+.env*.local

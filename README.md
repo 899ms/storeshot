@@ -54,7 +54,7 @@ bun install
 bun run dist:mac             # → dist/StoreShot-*-arm64.dmg
 ```
 
-Tagged releases are built and notarized in CI — see
+Release DMGs are signed and notarized locally — see
 [build/macos-signing.md](build/macos-signing.md).
 
 Or run the shell against the dev server:
