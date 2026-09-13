@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, FolderOpen, Image as ImageIcon, Sparkles } from "lucide-react";
+import { Check, Download, FolderOpen, Image as ImageIcon, Languages, Layers, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -93,7 +93,7 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close(true)}>
       <DialogContent
-        className="max-h-[90vh] max-w-2xl overflow-y-auto p-6 sm:p-8"
+        className="max-h-[90vh] max-w-xl overflow-y-auto p-6"
         aria-describedby="onboarding-desc"
       >
         <DialogHeader>
@@ -128,21 +128,24 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
         </div>
 
         {/* Fixed body height so the dialog doesn't jump between steps. */}
-        <div className="min-h-[340px] sm:min-h-[380px]">
+        <div className="min-h-[300px]">
         {step === 0 && (
-          <ul className="space-y-4 text-[15px] leading-relaxed">
-            <li className="flex gap-3">
-              <Check className="mt-1 h-5 w-5 shrink-0 text-primary" />
-              <span><strong>Design</strong> App Store + Google Play screenshots on a drag-and-drop canvas.</span>
-            </li>
-            <li className="flex gap-3">
-              <Check className="mt-1 h-5 w-5 shrink-0 text-primary" />
-              <span><strong>Localize</strong> every screen into store locales, with AI translation.</span>
-            </li>
-            <li className="flex gap-3">
-              <Check className="mt-1 h-5 w-5 shrink-0 text-primary" />
-              <span><strong>Export</strong> a complete, correctly-named PNG bundle in one click.</span>
-            </li>
+          <ul className="space-y-3">
+            {[
+              { icon: Layers, title: "Design", body: "App Store + Google Play screenshots on a drag-and-drop canvas." },
+              { icon: Languages, title: "Localize", body: "Every screen into store locales, with AI translation." },
+              { icon: Download, title: "Export", body: "A complete, correctly-named PNG bundle in one click." },
+            ].map(({ icon: Icon, title, body }) => (
+              <li key={title} className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-none">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-semibold leading-snug">{title}</span>
+                  <span className="block text-sm text-muted-foreground">{body}</span>
+                </span>
+              </li>
+            ))}
           </ul>
         )}
 
@@ -154,10 +157,15 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
               with git and resume anywhere. Until you pick one, work stays in this
               machine&apos;s memory.
             </p>
-            <Card className="flex items-center gap-3 p-3 shadow-none">
+            <Card className="flex items-center gap-3 p-4 shadow-none">
               <FolderOpen className="h-5 w-5 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                {workspace ?? "No workspace chosen yet"}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">
+                  {workspace ?? "No workspace chosen yet"}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {workspace ? "Autosaves here as you type" : "Required for saving — work is memory-only until then"}
+                </span>
               </span>
               <Button
                 type="button"
@@ -170,14 +178,23 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
                 {pending ? "Opening…" : workspace ? "Change…" : "Choose folder…"}
               </Button>
             </Card>
+            <ul className="space-y-2 rounded-lg bg-muted/50 p-3 text-[13px] text-muted-foreground">
+              <li className="flex gap-2">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                Every keystroke autosaves in under a second — no save button needed.
+              </li>
+              <li className="flex gap-2">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                Switch workspaces anytime from the toolbar; pending saves flush first.
+              </li>
+            </ul>
             {error && (
               <p role="alert" className="text-xs text-destructive">{error}</p>
             )}
           </div>
         )}
-
         {step === 2 && (
-          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2">
             <Card
               role="radio"
               aria-checked={choice === "samples"}
@@ -199,7 +216,7 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
               <div className="flex gap-1.5 overflow-hidden rounded-md">
                 {SAMPLE_IMAGES.map((src) => (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={src} src={src} alt="" className="h-44 min-w-0 flex-1 object-cover" />
+                  <img key={src} src={src} alt="" className="h-36 min-w-0 flex-1 object-cover" />
                 ))}
               </div>
               <p className="text-[15px] font-semibold">Sample deck</p>
@@ -226,7 +243,7 @@ export function OnboardingDialog({ open, onOpenChange, onApplySamples }: Props) 
                   : "hover:bg-muted/40",
               )}
             >
-              <div className="flex h-44 items-center justify-center rounded-md bg-muted/60">
+              <div className="flex h-36 items-center justify-center rounded-md bg-muted/60">
                 <ImageIcon className="h-8 w-8 text-muted-foreground" />
               </div>
               <p className="text-[15px] font-semibold">Blank deck</p>
