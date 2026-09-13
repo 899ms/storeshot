@@ -9,7 +9,7 @@
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Instead, open a
-[private security advisory](https://github.com/stackwares/storeshot-electron/security/advisories/new)
+[private security advisory](https://github.com/stackwares/storeshot/security/advisories/new)
 or email `nemoryoliver@gmail.com`.
 
 Include: what you did, what you expected, what happened, and the app/error-log

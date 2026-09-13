@@ -6,12 +6,12 @@
   "author": "Stackwares",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/stackwares/storeshot-electron.git"
+    "url": "git+https://github.com/stackwares/storeshot.git"
   },
   "bugs": {
-    "url": "https://github.com/stackwares/storeshot-electron/issues"
+    "url": "https://github.com/stackwares/storeshot/issues"
   },
-  "homepage": "https://github.com/stackwares/storeshot-electron#readme",
+  "homepage": "https://stackwares.github.io/storeshot/",
   "keywords": [
     "app-store",
     "screenshots",

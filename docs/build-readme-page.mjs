@@ -6,7 +6,7 @@
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 
-const repo = process.env.GITHUB_REPOSITORY || "stackwares/storeshot-electron";
+const repo = process.env.GITHUB_REPOSITORY || "stackwares/storeshot";
 const branch = process.env.GITHUB_REF_NAME && process.env.GITHUB_EVENT_NAME === "push"
   ? process.env.GITHUB_REF_NAME
   : "main";
@@ -39,7 +39,7 @@ const page = `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>StoreShot — README</title>
   <meta name="description" content="StoreShot README mirrored from GitHub." />
-  <link rel="canonical" href="https://stackwares.github.io/storeshot-electron/" />
+  <link rel="canonical" href="https://stackwares.github.io/storeshot/" />
   <style>
     :root {
       --bg: #ffffff;
