@@ -2,8 +2,14 @@
 import * as React from "react";
 import {
   AlignCenter,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
   AlignLeft,
   AlignRight,
+  AlignStartHorizontal,
+  AlignStartVertical,
   AlertTriangle,
   ArrowDownToLine,
   ArrowUpToLine,
@@ -11,11 +17,15 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  FlipHorizontal2,
+  FlipVertical2,
   Languages,
   Loader2,
   RotateCw,
   Trash2,
   Type,
+  UnfoldHorizontal,
+  UnfoldVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,6 +59,8 @@ import {
   toTextElementId,
 } from "@/lib/elements";
 import { DEFAULT_LOCALE, pickText, writeLocalized } from "@/lib/locale";
+import { alignRect } from "@/lib/snap";
+import type { AlignMode } from "@/lib/snap";
 import {
   applyLocaleTranslations,
   translateSlidesForLocale,
@@ -79,6 +91,10 @@ type Props = {
   locale: string;
   locales: string[];
   selectedElementId: ElementId | null;
+  /** Multi-selection peers on this screen (Shift-click). Empty = single. */
+  peerElementIds?: ElementId[];
+  onAlignPeers?: (mode: AlignMode) => void;
+  onDistributePeers?: (axis: "x" | "y") => void;
   disabled?: boolean;
   headlineFont?: string;
   labelFont?: string;
@@ -104,6 +120,9 @@ export function Inspector({
   locale,
   locales,
   selectedElementId,
+  peerElementIds,
+  onAlignPeers,
+  onDistributePeers,
   disabled,
   headlineFont,
   labelFont,
@@ -160,17 +179,25 @@ export function Inspector({
   }, [selectedElementId]);
 
   const elementName = selectedElementId ? elementLabel(selectedElementId) : null;
+  const peerCount = peerElementIds?.length || 0;
+  const multiSelected = !!selectedElementId && peerCount > 0;
 
   return (
     <div className="figma-thin-scroll flex h-full flex-col bg-figma-panel text-figma-text">
       <div className="space-y-1 border-b border-figma-divider p-3">
         <h2 className="figma-section-label">
-          {selectedElementId ? elementName : `Screen — ${(slide.name ?? "").trim() || "Untitled"}`}
+          {multiSelected
+            ? `${peerCount + 1} elements`
+            : selectedElementId
+              ? elementName
+              : `Screen — ${(slide.name ?? "").trim() || "Untitled"}`}
         </h2>
         <p className="text-[11px] leading-snug text-figma-secondary">
-          {selectedElementId
-            ? "Element selected — geometry, type, and stacking."
-            : LAYOUT_HINT[layoutValue]}
+          {multiSelected
+            ? "Multi-selection — align within the group, distribute spacing."
+            : selectedElementId
+              ? "Element selected — geometry, type, and stacking."
+              : LAYOUT_HINT[layoutValue]}
         </p>
         {selectedElementId ? (
           <button
@@ -324,6 +351,13 @@ export function Inspector({
             </div>
           </TabsContent>
           <TabsContent value="properties" className="mt-0 space-y-3">
+            {multiSelected && onAlignPeers && onDistributePeers ? (
+              <MultiElementPanel
+                count={peerCount + 1}
+                onAlign={onAlignPeers}
+                onDistribute={onDistributePeers}
+              />
+            ) : (
             <ElementTransformControls
               slide={slide}
               device={device}
@@ -339,6 +373,7 @@ export function Inspector({
               onChange={onChange}
               onSelectElement={onSelectElement}
             />
+            )}
           </TabsContent>
         </div>
       </Tabs>
@@ -617,6 +652,14 @@ function ElementTransformControls({
 
   const overlayDefaultColor = slide.inverted ? theme.fgAlt : theme.fg;
   const showCaptionType = activeId === "caption" && !textOnly;
+  const { cW: alignCW, cH: alignCH } = getCanvas(device, canvasSizes);
+
+  function alignActiveElement(mode: AlignMode) {
+    if (!activeId) return;
+    const cur = getTransform(activeId);
+    if (!cur) return;
+    patchElement(activeId, alignRect(cur, alignCW, alignCH, mode));
+  }
 
   const elementPanel = activeId ? (
     <ActiveElementPanel
@@ -626,6 +669,17 @@ function ElementTransformControls({
       locale={locale}
       labelFont={labelFont || DEFAULT_LABEL_FONT}
       textDefaultColor={overlayDefaultColor}
+      onAlign={alignActiveElement}
+      onFlip={() => {
+        const cur = activeId ? getTransform(activeId) : undefined;
+        if (activeId && cur) patchElement(activeId, { flipH: !cur.flipH });
+      }}
+      onFlipV={() => {
+        const cur = activeId ? getTransform(activeId) : undefined;
+        if (activeId && cur) patchElement(activeId, { flipV: !cur.flipV });
+      }}
+      flipH={!!activeTransform?.flipH}
+      flipV={!!activeTransform?.flipV}
       onRotate={(rotation) => patchElement(activeId, { rotation })}
       onRect={(patch) => patchElement(activeId, patch)}
       onReorder={(dir) => reorder(activeId, dir)}
@@ -893,6 +947,62 @@ function snapWeight(family: string, weight: number | undefined, fallback: number
   return weights[0] ?? fallback;
 }
 
+// Multi-selection panel (Figma): align the group within its shared bounds
+// and distribute spacing. Shift-click canvas elements to grow the set,
+// Esc or a plain click collapses it.
+function MultiElementPanel({
+  count,
+  onAlign,
+  onDistribute,
+}: {
+  count: number;
+  onAlign: (mode: AlignMode) => void;
+  onDistribute: (axis: "x" | "y") => void;
+}) {
+  return (
+    <div className="space-y-2 rounded border bg-background/60 p-2.5">
+      <p className="text-[11px] text-muted-foreground">
+        {count} elements — align within the selection, distribute spacing.
+        Single-element edits collapse the set.
+      </p>
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">Align selection</Label>
+        <div className="grid grid-cols-6 gap-1">
+          <LayerButton onClick={() => onAlign("left")} label="Align left (Alt+A)" disabled={false}>
+            <AlignStartVertical className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton onClick={() => onAlign("center-h")} label="Align center (Alt+H)" disabled={false}>
+            <AlignCenterVertical className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton onClick={() => onAlign("right")} label="Align right (Alt+D)" disabled={false}>
+            <AlignEndVertical className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton onClick={() => onAlign("top")} label="Align top (Alt+W)" disabled={false}>
+            <AlignStartHorizontal className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton onClick={() => onAlign("middle")} label="Align middle (Alt+V)" disabled={false}>
+            <AlignCenterHorizontal className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton onClick={() => onAlign("bottom")} label="Align bottom (Alt+S)" disabled={false}>
+            <AlignEndHorizontal className="h-3.5 w-3.5" />
+          </LayerButton>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">Distribute spacing</Label>
+        <div className="grid grid-cols-2 gap-1">
+          <LayerButton onClick={() => onDistribute("x")} label="Distribute horizontally (Ctrl+Alt+H)" disabled={false}>
+            <UnfoldHorizontal className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton onClick={() => onDistribute("y")} label="Distribute vertically (Ctrl+Alt+V)" disabled={false}>
+            <UnfoldVertical className="h-3.5 w-3.5" />
+          </LayerButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ActiveElementPanel({
   activeId,
   transform,
@@ -900,6 +1010,11 @@ function ActiveElementPanel({
   locale,
   labelFont,
   textDefaultColor,
+  onAlign,
+  onFlip,
+  onFlipV,
+  flipH,
+  flipV,
   onRotate,
   onRect,
   onReorder,
@@ -913,6 +1028,11 @@ function ActiveElementPanel({
   locale: string;
   labelFont: string;
   textDefaultColor: string;
+  onAlign: (mode: AlignMode) => void;
+  onFlip: () => void;
+  onFlipV: () => void;
+  flipH: boolean;
+  flipV: boolean;
   onRotate: (rotation: number) => void;
   onRect: (patch: Partial<ElementTransform>) => void;
   onReorder: (dir: "front" | "back" | "up" | "down") => void;
@@ -959,6 +1079,18 @@ function ActiveElementPanel({
       )}
 
       <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">Flip</Label>
+        <div className="grid grid-cols-2 gap-1">
+          <LayerButton disabled={!engaged} onClick={onFlip} label={flipH ? "Unflip horizontal" : "Flip horizontal (Shift+H)"}>
+            <FlipHorizontal2 className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton disabled={!engaged} onClick={onFlipV} label={flipV ? "Unflip vertical" : "Flip vertical (Shift+V)"}>
+            <FlipVertical2 className="h-3.5 w-3.5" />
+          </LayerButton>
+        </div>
+      </div>
+
+      <div className="space-y-1">
         <div className="flex items-center justify-between">
           <Label className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <RotateCw className="h-3 w-3" /> Rotation
@@ -976,6 +1108,32 @@ function ActiveElementPanel({
           onValueChange={([value]) => onRotate(value)}
           aria-label={`${label} rotation`}
         />
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">
+          Align to screen <span className="opacity-70">(Alt+key)</span>
+        </Label>
+        <div className="grid grid-cols-6 gap-1">
+          <LayerButton disabled={!engaged} onClick={() => onAlign("left")} label="Align left (Alt+A)">
+            <AlignStartVertical className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton disabled={!engaged} onClick={() => onAlign("center-h")} label="Align center horizontally (Alt+H)">
+            <AlignCenterVertical className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton disabled={!engaged} onClick={() => onAlign("right")} label="Align right (Alt+D)">
+            <AlignEndVertical className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton disabled={!engaged} onClick={() => onAlign("top")} label="Align top (Alt+W)">
+            <AlignStartHorizontal className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton disabled={!engaged} onClick={() => onAlign("middle")} label="Align middle vertically (Alt+V)">
+            <AlignCenterHorizontal className="h-3.5 w-3.5" />
+          </LayerButton>
+          <LayerButton disabled={!engaged} onClick={() => onAlign("bottom")} label="Align bottom (Alt+S)">
+            <AlignEndHorizontal className="h-3.5 w-3.5" />
+          </LayerButton>
+        </div>
       </div>
 
       <div className="space-y-1">

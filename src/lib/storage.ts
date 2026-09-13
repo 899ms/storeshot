@@ -67,6 +67,8 @@ function cleanTransform(value: unknown): ElementTransform | undefined {
     ...(typeof raw.rotation === "number" && Number.isFinite(raw.rotation)
       ? { rotation: raw.rotation }
       : {}),
+    ...(raw.flipH === true ? { flipH: true as const } : {}),
+    ...(raw.flipV === true ? { flipV: true as const } : {}),
     ...(typeof raw.zIndex === "number" && Number.isFinite(raw.zIndex)
       ? { zIndex: raw.zIndex }
       : {}),

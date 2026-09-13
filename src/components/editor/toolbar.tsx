@@ -77,14 +77,21 @@ export function Toolbar(props: Props) {
   const deviceLabel = DEVICE_LABEL[props.device] ?? "Phone";
 
   // Inside the macOS shell the window uses hiddenInset traffic lights, so the
-  // bar clears them on the left and doubles as the window drag handle.
+  // whole bar is a window drag handle (`electron-drag-bar`). Interactive
+  // clusters opt out via `electron-no-drag` so buttons/menus stay clickable.
+  // While a Radix overlay is open the handle yields (see globals.css) so an
+  // outside click on empty bar space dismisses the menu instead of dragging.
   const shellBar = isMacShell();
   return (
     <div
-      className={`relative flex h-12 shrink-0 items-center gap-1.5 overflow-hidden border-b border-figma-divider bg-figma-panel px-2 text-[12px] text-figma-text backdrop-blur${shellBar ? " electron-shell-bar pl-[76px]" : ""}`}
+      className={`relative flex h-12 shrink-0 items-center gap-1.5 overflow-hidden border-b border-figma-divider bg-figma-panel px-2 text-[12px] text-figma-text backdrop-blur${shellBar ? " electron-drag-bar" : ""}`}
     >
+      {shellBar ? (
+        // Spacer so controls clear the inset traffic lights.
+        <div aria-hidden className="h-full w-[70px] shrink-0" />
+      ) : null}
       {SHOW_APP_RENAME ? (
-        <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <div className="electron-no-drag flex min-w-0 shrink-0 items-center gap-2">
           <Input
             value={props.appName}
             onChange={(e) => props.setAppName(e.target.value)}
@@ -99,7 +106,7 @@ export function Toolbar(props: Props) {
 
       {/* Center — canvas context, dead-centered on the bar */}
       <div className="pointer-events-none absolute left-1/2 top-1/2 flex min-w-0 max-w-[58vw] -translate-x-1/2 -translate-y-1/2 items-center justify-center">
-        <div className="pointer-events-auto flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-md border border-figma-divider bg-figma-hover/60 p-0.5">
+        <div className="electron-no-drag pointer-events-auto flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-md border border-figma-divider bg-figma-hover/60 p-0.5">
           {props.setDevice ? (
             <div role="radiogroup" aria-label="Device" className="flex shrink-0 items-center gap-0.5">
               <Button
@@ -201,7 +208,7 @@ export function Toolbar(props: Props) {
       </span>
 
       {/* Right — actions */}
-      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+      <div className="electron-no-drag ml-auto flex shrink-0 items-center gap-0.5">
         {props.onUndo || props.onRedo ? (
           <>
             <Button

@@ -29,6 +29,7 @@ type Props = {
   slides: Slide[];
   activeId: string | null;
   selectedElementId?: ElementId | null;
+  selectedPeerIds?: ElementId[];
   device: Device;
   theme: Theme;
   locale: string;
@@ -63,6 +64,7 @@ export function Sidebar({
   slides,
   activeId,
   selectedElementId,
+  selectedPeerIds,
   device,
   theme,
   locale,
@@ -156,7 +158,9 @@ export function Sidebar({
                     <div className="mb-1 ml-3 space-y-0.5 border-l border-figma-divider pl-1.5">
                       {layers.map((layer) => {
                         const selected =
-                          isActive && selectedElementId === layer.id;
+                          isActive &&
+                          (selectedElementId === layer.id ||
+                            (selectedPeerIds || []).includes(layer.id));
                         return (
                           <button
                             key={layer.id}

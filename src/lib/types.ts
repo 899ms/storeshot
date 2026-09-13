@@ -25,13 +25,16 @@ export type ScreenBackground = (
   | { kind: "image"; src: string }
 ) & BackgroundStyle;
 
-// Per-element rect in canvas pixel space. Optional rotation in degrees and zIndex.
+// Per-element rect in canvas pixel space. Optional rotation in degrees,
+// mirror flips, and zIndex.
 export type ElementTransform = {
   x: number;
   y: number;
   width: number;
   height: number;
   rotation?: number;
+  flipH?: boolean;
+  flipV?: boolean;
   zIndex?: number;
 };
 

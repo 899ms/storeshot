@@ -42,13 +42,18 @@ import type {
   ScreenBackground,
   SelectedElement,
   Slide,
+  TextElement,
 } from "@/lib/types";
 import { ExportProgressIndicator } from "./export-progress";
 import { Button } from "@/components/ui/button";
 import { Inspector } from "./inspector";
 import { PreviewStage } from "./preview-stage";
 import { Sidebar } from "./sidebar";
-import { DeckCanvas, getCanvas } from "./slide-canvas";
+import { DeckCanvas, getCanvas, getElementTransform } from "./slide-canvas";
+import { alignRect } from "@/lib/snap";
+import type { AlignMode } from "@/lib/snap";
+import { alignRectsToBounds, distributeRects } from "@/lib/arrange";
+import type { ArrangeAxis } from "@/lib/arrange";
 import { Toolbar } from "./toolbar";
 // Heavy, rarely-on-first-paint surfaces load on demand: dialogs mount only
 // when opened, and zip/snapshot libraries import inside export functions.
@@ -101,6 +106,10 @@ export function ScreenshotEditor() {
   const lastManualSaveErrorRef = React.useRef<string | null>(null);
   const [activeSlideId, setActiveSlideId] = React.useState<string | null>(null);
   const [selectedElement, setSelectedElement] = React.useState<SelectedElement | null>(null);
+  // Figma-style multi-selection: extra elements on the primary's slide,
+  // added with Shift-click. Single-element edits collapse the set; align and
+  // distribute consume it. Same-slide only by construction.
+  const [selectedPeers, setSelectedPeers] = React.useState<SelectedElement[]>([]);
   const [exporting, setExporting] = React.useState<string | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
   const [onboardingOpen, setOnboardingOpen] = React.useState(false);
@@ -249,7 +258,38 @@ export function ScreenshotEditor() {
     if (selectedElement && selectedElement.slideId !== activeSlide?.id) {
       setSelectedElement(null);
     }
+    // Peers only ever belong to the primary's slide; drop them on switch.
+    setSelectedPeers((prev) => {
+      const next = prev.filter((p) => p.slideId === activeSlide?.id);
+      return next.length === prev.length ? prev : next;
+    });
   }, [activeSlide?.id, selectedElement]);
+
+  // Canvas + sidebar selection entry point. Plain clicks replace; Shift-click
+  // toggles a peer on the primary's slide (a cross-slide Shift-click starts
+  // a fresh single selection there instead).
+  const selectElement = React.useCallback(
+    (sel: SelectedElement | null, additive?: boolean) => {
+      if (!sel || !additive) {
+        setSelectedElement(sel);
+        setSelectedPeers([]);
+        return;
+      }
+      const primary = selectedElement;
+      if (!primary || sel.slideId !== primary.slideId) {
+        setSelectedElement(sel);
+        setSelectedPeers([]);
+        return;
+      }
+      if (sel.elementId === primary.elementId) return;
+      setSelectedPeers((prev) =>
+        prev.some((p) => p.slideId === sel.slideId && p.elementId === sel.elementId)
+          ? prev.filter((p) => !(p.slideId === sel.slideId && p.elementId === sel.elementId))
+          : [...prev, sel],
+      );
+    },
+    [selectedElement],
+  );
 
   // Restore the last-selected screen per workspace + device across
   // reloads. Stored ids are validated against the live deck; anything stale
@@ -507,6 +547,8 @@ export function ScreenshotEditor() {
 
   const patchSlide = React.useCallback(
     (id: string, patch: Partial<Slide>) => {
+      // Single-element edit path: collapses any multi-selection.
+      setSelectedPeers([]);
       setState((prev) => ({
         ...prev,
         slidesByDevice: {
@@ -613,6 +655,9 @@ export function ScreenshotEditor() {
 
   const patchElementTransform = React.useCallback(
     (slideId: string, elementId: ElementId, transform: ElementTransform) => {
+      // Single-element edit path (canvas drag/resize/nudge, single align):
+      // collapses any multi-selection. Multi ops use commitManyTransforms.
+      setSelectedPeers([]);
       setState((prev) => ({
         ...prev,
         slidesByDevice: {
@@ -641,6 +686,140 @@ export function ScreenshotEditor() {
       }));
     },
     [setState],
+  );
+
+  // Figma parity: Alt+key aligns the selected element to its screen
+  // (single-element align targets the parent frame). One undo step.
+  const alignSelectedElement = React.useCallback(
+    (mode: AlignMode) => {
+      const sel = selectedElement;
+      if (!sel) return;
+      const slide = (state.slidesByDevice[state.device] || []).find(
+        (s) => s.id === sel.slideId,
+      );
+      if (!slide) return;
+      const cur = getElementTransform(slide, state.device, sel.elementId, state.canvasSizes);
+      if (!cur) return;
+      const { cW, cH } = getCanvas(state.device, state.canvasSizes);
+      const p = alignRect(cur, cW, cH, mode);
+      patchElementTransform(sel.slideId, sel.elementId, { ...cur, ...p });
+    },
+    [selectedElement, state.slidesByDevice, state.device, state.canvasSizes, patchElementTransform],
+  );
+
+  // Figma parity: Shift+H / Shift+V mirror the selected element. One undo step.
+  const flipSelectedElement = React.useCallback(
+    (axis: "h" | "v") => {
+      const sel = selectedElement;
+      if (!sel) return;
+      const slide = (state.slidesByDevice[state.device] || []).find(
+        (s) => s.id === sel.slideId,
+      );
+      if (!slide) return;
+      const cur = getElementTransform(slide, state.device, sel.elementId, state.canvasSizes);
+      if (!cur) return;
+      patchElementTransform(sel.slideId, sel.elementId, {
+        ...cur,
+        flipH: axis === "h" ? !cur.flipH : cur.flipH,
+        flipV: axis === "v" ? !cur.flipV : cur.flipV,
+      });
+    },
+    [selectedElement, state.slidesByDevice, state.device, state.canvasSizes, patchElementTransform],
+  );
+
+  // Multi-element commit: one undo step for align/distribute across built-in
+  // and overlay text elements. Unlike patchElementTransform it preserves the
+  // multi-selection so ops can be chained.
+  const commitManyTransforms = React.useCallback(
+    (slideId: string, next: Map<ElementId, ElementTransform>) => {
+      if (next.size === 0) return;
+      setState((prev) => ({
+        ...prev,
+        slidesByDevice: {
+          ...prev.slidesByDevice,
+          [prev.device]: (prev.slidesByDevice[prev.device] || []).map((slide) => {
+            if (slide.id !== slideId) return slide;
+            const nextTexts = (slide.textElements || []).map((el) => {
+              const t = next.get(toTextElementId(el.id));
+              return t ? { ...el, transform: t } : el;
+            });
+            const nextTransforms: Partial<Record<BuiltInElementId, ElementTransform>> = {
+              ...(slide.transforms || {}),
+            };
+            for (const [id, t] of next) {
+              if (isBuiltInElementId(id)) nextTransforms[id] = t;
+            }
+            return { ...slide, textElements: nextTexts, transforms: nextTransforms };
+          }),
+        },
+      }));
+    },
+    [setState],
+  );
+
+  // Primary + peers resolved to screen-local rects. Null unless a same-slide
+  // group of 2+ is fully resolvable.
+  const groupRects = React.useCallback((): {
+    slide: Slide;
+    ids: ElementId[];
+  } | null => {
+    if (!selectedElement) return null;
+    const peers = selectedPeers.filter((p) => p.slideId === selectedElement.slideId);
+    if (peers.length === 0) return null;
+    const slide = (state.slidesByDevice[state.device] || []).find(
+      (s) => s.id === selectedElement.slideId,
+    );
+    if (!slide) return null;
+    const ids = [selectedElement.elementId, ...peers.map((p) => p.elementId)];
+    for (const id of ids) {
+      if (!getElementTransform(slide, state.device, id, state.canvasSizes)) return null;
+    }
+    return { slide, ids };
+  }, [selectedElement, selectedPeers, state.slidesByDevice, state.device, state.canvasSizes]);
+
+  const mergeOrigins = React.useCallback(
+    (
+      slide: Slide,
+      origins: { id: string; x: number; y: number }[],
+    ): Map<ElementId, ElementTransform> => {
+      const next = new Map<ElementId, ElementTransform>();
+      for (const o of origins) {
+        const id = o.id as ElementId;
+        const cur = getElementTransform(slide, state.device, id, state.canvasSizes);
+        if (!cur) continue;
+        // Skip no-ops so distribute with <3 elements never writes history.
+        if (cur.x === o.x && cur.y === o.y) continue;
+        next.set(id, { ...cur, x: o.x, y: o.y });
+      }
+      return next;
+    },
+    [state.device, state.canvasSizes],
+  );
+
+  const alignPeerGroup = React.useCallback(
+    (mode: AlignMode) => {
+      const g = groupRects();
+      if (!g) return;
+      const rects = g.ids.map((id) => {
+        const t = getElementTransform(g.slide, state.device, id, state.canvasSizes);
+        return { id, x: t!.x, y: t!.y, width: t!.width, height: t!.height };
+      });
+      commitManyTransforms(g.slide.id, mergeOrigins(g.slide, alignRectsToBounds(rects, mode)));
+    },
+    [groupRects, commitManyTransforms, mergeOrigins, state.device, state.canvasSizes],
+  );
+
+  const distributePeerGroup = React.useCallback(
+    (axis: ArrangeAxis) => {
+      const g = groupRects();
+      if (!g) return;
+      const rects = g.ids.map((id) => {
+        const t = getElementTransform(g.slide, state.device, id, state.canvasSizes);
+        return { id, x: t!.x, y: t!.y, width: t!.width, height: t!.height };
+      });
+      commitManyTransforms(g.slide.id, mergeOrigins(g.slide, distributeRects(rects, axis)));
+    },
+    [groupRects, commitManyTransforms, mergeOrigins, state.device, state.canvasSizes],
   );
 
   const patchTextElementText = React.useCallback(
@@ -748,11 +927,103 @@ export function ScreenshotEditor() {
     [patchSlide],
   );
 
-  // Delete the selected overlay text element (Delete key). Returns true if handled.
-  const deleteSelectedTextElement = React.useCallback(() => {
+  // Element clipboard for copy/paste across screens. In-memory only: the
+  // payload is a full TextElement snapshot, re-id-ed on paste.
+  const clipboardRef = React.useRef<TextElement | null>(null);
+  const pasteSeqRef = React.useRef(0);
+
+  function cloneTextElement(src: TextElement, dx: number, dy: number, cW: number, cH: number): TextElement {
+    return {
+      ...src,
+      id: nid(),
+      text: { ...src.text },
+      transform: {
+        ...src.transform,
+        x: Math.max(0, Math.min(src.transform.x + dx, Math.max(0, cW - src.transform.width))),
+        y: Math.max(0, Math.min(src.transform.y + dy, Math.max(0, cH - src.transform.height))),
+      },
+    };
+  }
+
+  // Duplicate the selected overlay text element with a diagonal offset,
+  // Figma-style. Returns true if handled (caller skips screen duplication).
+  const duplicateSelectedTextElement = React.useCallback(() => {
     const sel = selectedElement;
     if (!sel || !isTextElementId(sel.elementId)) return false;
     const textId = textElementKey(sel.elementId);
+    let newId: string | null = null;
+    const { cW, cH } = getCanvas(state.device, state.canvasSizes);
+    setState((prev) => ({
+      ...prev,
+      slidesByDevice: {
+        ...prev.slidesByDevice,
+        [prev.device]: (prev.slidesByDevice[prev.device] || []).map((slide) => {
+          if (slide.id !== sel.slideId) return slide;
+          const src = (slide.textElements || []).find((element) => element.id === textId);
+          if (!src) return slide;
+          const existingZ = (slide.textElements || []).map(
+            (element) => element.transform.zIndex ?? 0,
+          );
+          const copy = cloneTextElement(src, 48, 48, cW, cH);
+          copy.transform = { ...copy.transform, zIndex: Math.max(5, ...existingZ) + 1 };
+          newId = copy.id;
+          return { ...slide, textElements: [...(slide.textElements || []), copy] };
+        }),
+      },
+    }));
+    if (newId) {
+      setSelectedElement({ slideId: sel.slideId, elementId: toTextElementId(newId) });
+      setSelectedPeers([]);
+    }
+    return true;
+  }, [selectedElement, setState, state.device, state.canvasSizes]);
+
+  const copySelectedTextElement = React.useCallback(() => {
+    const sel = selectedElement;
+    if (!sel || !isTextElementId(sel.elementId)) return false;
+    const textId = textElementKey(sel.elementId);
+    const slide = (state.slidesByDevice[state.device] || []).find((s) => s.id === sel.slideId);
+    const src = slide?.textElements?.find((element) => element.id === textId);
+    if (!src) return false;
+    clipboardRef.current = { ...src, text: { ...src.text }, transform: { ...src.transform } };
+    pasteSeqRef.current = 0;
+    return true;
+  }, [selectedElement, state.slidesByDevice, state.device]);
+
+  // Paste the clipboard onto the active screen with a cascading offset.
+  const pasteTextElement = React.useCallback(() => {
+    const src = clipboardRef.current;
+    const slide = activeSlide;
+    if (!src || !slide || exporting) return false;
+    pasteSeqRef.current += 1;
+    const step = 32 * pasteSeqRef.current;
+    const { cW, cH } = getCanvas(state.device, state.canvasSizes);
+    const existingZ = [
+      ...(Object.keys(slide.transforms || {}).map(
+        (key) => slide.transforms?.[key as BuiltInElementId]?.zIndex ?? 0,
+      )),
+      ...((slide.textElements || []).map((element) => element.transform.zIndex ?? 0)),
+    ];
+    const copy = cloneTextElement(src, step, step, cW, cH);
+    copy.transform = { ...copy.transform, zIndex: Math.max(5, ...existingZ) + 1 };
+    patchSlide(slide.id, { textElements: [...(slide.textElements || []), copy] });
+    setSelectedElement({ slideId: slide.id, elementId: toTextElementId(copy.id) });
+    return true;
+  }, [activeSlide, exporting, patchSlide, state.device, state.canvasSizes]);
+
+  // Delete the selected overlay text elements (Delete key): the whole
+  // text selection goes; built-ins are never deletable. Returns true if handled.
+  const deleteSelectedTextElement = React.useCallback(() => {
+    const sel = selectedElement;
+    if (!sel) return false;
+    const ids = new Set<string>();
+    if (isTextElementId(sel.elementId)) ids.add(textElementKey(sel.elementId));
+    for (const p of selectedPeers) {
+      if (p.slideId === sel.slideId && isTextElementId(p.elementId)) {
+        ids.add(textElementKey(p.elementId));
+      }
+    }
+    if (ids.size === 0) return false;
     setState((prev) => ({
       ...prev,
       slidesByDevice: {
@@ -762,7 +1033,7 @@ export function ScreenshotEditor() {
             ? {
                 ...slide,
                 textElements: (slide.textElements || []).filter(
-                  (element) => element.id !== textId,
+                  (element) => !ids.has(element.id),
                 ),
               }
             : slide,
@@ -770,8 +1041,9 @@ export function ScreenshotEditor() {
       },
     }));
     setSelectedElement(null);
+    setSelectedPeers([]);
     return true;
-  }, [selectedElement, setState]);
+  }, [selectedElement, selectedPeers, setState]);
 
   // ---------- Keyboard shortcuts ----------
   React.useEffect(() => {
@@ -785,7 +1057,7 @@ export function ScreenshotEditor() {
       if (exporting) return;
 
       if (e.key === "Escape") {
-        setSelectedElement(null);
+        selectElement(null);
         if (target && "blur" in target && typeof target.blur === "function") target.blur();
         return;
       }
@@ -793,6 +1065,50 @@ export function ScreenshotEditor() {
       // Let focused inputs and contenteditable text keep their native undo,
       // redo, selection, and deletion behavior.
       if (inEditable) return;
+
+      // Figma-style distribute shortcuts. With a multi-selection the gaps
+      // equalize; otherwise a no-op (never writes history).
+      if (e.altKey && e.ctrlKey && !e.metaKey && !e.shiftKey && selectedElement) {
+        if (e.code === "KeyH" || e.code === "KeyV") {
+          e.preventDefault();
+          distributePeerGroup(e.code === "KeyH" ? "x" : "y");
+          return;
+        }
+      }
+
+      // Figma-style flip shortcuts (Shift+H / Shift+V mirror).
+      if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && selectedElement) {
+        if (e.code === "KeyH" || e.code === "KeyV") {
+          e.preventDefault();
+          flipSelectedElement(e.code === "KeyH" ? "h" : "v");
+          return;
+        }
+      }
+
+      // Figma-style align shortcuts. Physical codes so Mac Option output
+      // (å, ∂, ß…) still maps. Multi-selection aligns within the group.
+      if (e.altKey && !e.metaKey && !e.ctrlKey && selectedElement) {
+        const mode: AlignMode | null =
+          e.code === "KeyA"
+            ? "left"
+            : e.code === "KeyD"
+              ? "right"
+              : e.code === "KeyW"
+                ? "top"
+                : e.code === "KeyS"
+                  ? "bottom"
+                  : e.code === "KeyH"
+                    ? "center-h"
+                    : e.code === "KeyV"
+                      ? "middle"
+                      : null;
+        if (mode) {
+          e.preventDefault();
+          if (groupRects()) alignPeerGroup(mode);
+          else alignSelectedElement(mode);
+          return;
+        }
+      }
 
       if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {
         e.preventDefault();
@@ -816,10 +1132,18 @@ export function ScreenshotEditor() {
         const next = currentSlides[Math.max(0, idx - 1)];
         if (next) setActiveSlideId(next.id);
       } else if ((e.key === "d" || e.key === "D") && (e.metaKey || e.ctrlKey)) {
-        if (activeSlide) {
+        // A selected text element duplicates in place (Figma); otherwise the
+        // whole screen duplicates as before.
+        if (duplicateSelectedTextElement()) {
+          e.preventDefault();
+        } else if (activeSlide) {
           e.preventDefault();
           duplicateSlide(activeSlide.id);
         }
+      } else if ((e.key === "c" || e.key === "C") && (e.metaKey || e.ctrlKey)) {
+        if (copySelectedTextElement()) e.preventDefault();
+      } else if ((e.key === "v" || e.key === "V") && (e.metaKey || e.ctrlKey)) {
+        if (pasteTextElement()) e.preventDefault();
       } else if ((e.key === "e" || e.key === "E") && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setExportDialogOpen(true);
@@ -842,7 +1166,7 @@ export function ScreenshotEditor() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeSlide, currentSlides, duplicateSlide, deleteSlide, deleteSelectedTextElement, handleAddTextElement, exporting, undo, redo]);
+  }, [activeSlide, currentSlides, duplicateSlide, deleteSlide, deleteSelectedTextElement, duplicateSelectedTextElement, copySelectedTextElement, pasteTextElement, handleAddTextElement, alignSelectedElement, alignPeerGroup, distributePeerGroup, groupRects, flipSelectedElement, selectElement, selectedElement, exporting, undo, redo]);
 
   // ---------- Export ----------
 
@@ -1556,8 +1880,9 @@ export function ScreenshotEditor() {
             onReorder={reorderSlides}
             onSelect={setActiveSlideId}
             onSelectElement={(slideId, elementId) =>
-              setSelectedElement(elementId ? { slideId, elementId } : null)
+              selectElement(elementId ? { slideId, elementId } : null)
             }
+            selectedPeerIds={selectedPeers.map((p) => p.elementId)}
             onDelete={deleteSlide}
             onDuplicate={duplicateSlide}
             onAdd={addSlide}
@@ -1574,6 +1899,7 @@ export function ScreenshotEditor() {
               locale={state.locale}
               connectedCanvas={state.connectedCanvas}
               selectedElement={selectedElement}
+              selectedPeers={selectedPeers}
               headlineFont={state.headlineFont}
               labelFont={state.labelFont}
               background={state.background}
@@ -1587,7 +1913,7 @@ export function ScreenshotEditor() {
               onHeadlineChange={handlePreviewHeadline}
               onTextElementTextChange={patchTextElementText}
               onElementChange={patchElementTransform}
-              onSelectElement={setSelectedElement}
+              onSelectElement={selectElement}
               onRenameScreen={renameSlide}
               onAddText={handleAddTextElement}
               onDuplicateScreen={
@@ -1650,11 +1976,16 @@ export function ScreenshotEditor() {
                   ? selectedElement.elementId
                   : null
               }
+              peerElementIds={selectedPeers
+                .filter((p) => p.slideId === activeSlide.id)
+                .map((p) => p.elementId)}
+              onAlignPeers={alignPeerGroup}
+              onDistributePeers={distributePeerGroup}
               disabled={busy}
               onExportSlide={exportActiveSlide}
               onChange={(patch) => patchSlide(activeSlide.id, patch)}
               onSelectElement={(elementId) =>
-                setSelectedElement(
+                selectElement(
                   elementId ? { slideId: activeSlide.id, elementId } : null,
                 )
               }

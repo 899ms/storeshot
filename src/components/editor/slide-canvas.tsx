@@ -29,6 +29,9 @@ import {
   tabletWSmall,
 } from "@/lib/constants";
 import { toTextElementId } from "@/lib/elements";
+import type { Guide } from "@/lib/guides";
+import { SNAP_THRESHOLD, buildSnapTargets, snapDrag, snapThresholdForScale } from "@/lib/snap";
+import type { SnapLine, SnapRect } from "@/lib/snap";
 import { img } from "@/lib/image-cache";
 import { pickText, resolveScreenshot, isRtlLocale } from "@/lib/locale";
 import { screenCanvasLabel } from "@/lib/screen-title";
@@ -72,7 +75,8 @@ type EditHandlers = {
   onHeadlineChange?: (v: string) => void;
   onTextElementTextChange?: (id: string, v: string) => void;
   onElementChange?: (id: ElementId, t: ElementTransform) => void;
-  onSelectElement?: (id: ElementId | null) => void;
+  /** additive = Shift-click toggles a multi-selection peer. */
+  onSelectElement?: (id: ElementId | null, additive?: boolean) => void;
 };
 
 type Props = {
@@ -108,7 +112,8 @@ type DeckEditHandlers = {
   onHeadlineChange?: (slideId: string, v: string) => void;
   onTextElementTextChange?: (slideId: string, id: string, v: string) => void;
   onElementChange?: (slideId: string, id: ElementId, t: ElementTransform) => void;
-  onSelectElement?: (element: SelectedElement | null) => void;
+  /** additive = Shift-click toggles a multi-selection peer. */
+  onSelectElement?: (element: SelectedElement | null, additive?: boolean) => void;
   onSelectScreen?: (slideId: string) => void;
   onRenameScreen?: (slideId: string, name: string) => void;
 };
@@ -124,6 +129,8 @@ type DeckCanvasProps = {
   editable?: boolean;
   edit?: DeckEditHandlers;
   selectedElement?: SelectedElement | null;
+  /** Multi-selection peers (same-slide only). Stable array identity. */
+  selectedPeers?: SelectedElement[];
   activeSlideId?: string | null;
   previewScale?: number;
   hideEmpty?: boolean;
@@ -144,6 +151,10 @@ type DeckCanvasProps = {
   /** Spacing between screens in canvas px. Preview uses it for isolated
    * decks so separate pages read as separate; export always uses 0. */
   gap?: number;
+  /** Ruler guides (deck-global canvas px) for snap targets. Absent = no guide snap. */
+  guides?: Guide[];
+  /** Figma-style snap to canvas/elements/guides. Defaults to on. */
+  snapEnabled?: boolean;
 };
 
 // Visible separation between isolated screens (canvas px). Connected decks
@@ -446,6 +457,28 @@ function Blob({
 // ---------- Default element rects per layout ----------
 
 type Rect = { x: number; y: number; width: number; height: number };
+
+/** One cross-screen snap candidate: deck-global rect + owning slide. */
+type SnapExtra = {
+  slideId: string;
+  id: ElementId;
+  rect: SnapRect;
+};
+
+const EMPTY_SNAP_EXTRAS: SnapExtra[] = [];
+
+function sameSnapExtras(a: SnapExtra[], b: SnapExtra[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (e, i) =>
+      e.slideId === b[i].slideId &&
+      e.id === b[i].id &&
+      e.rect.x === b[i].rect.x &&
+      e.rect.y === b[i].rect.y &&
+      e.rect.width === b[i].rect.width &&
+      e.rect.height === b[i].rect.height,
+  );
+}
 type LayoutRects = {
   caption?: Rect & { align?: "center" | "left" };
   device?: Rect;
@@ -582,6 +615,8 @@ export function getElementTransform(
     width: rect.width,
     height: rect.height,
     rotation: saved?.rotation ?? 0,
+    flipH: saved?.flipH ?? false,
+    flipV: saved?.flipV ?? false,
     zIndex: saved?.zIndex ?? defaultElementZ(id as BuiltInElementId),
   };
 }
@@ -675,6 +710,7 @@ function areDeckPropsEqual(prev: DeckCanvasProps, next: DeckCanvasProps): boolea
     prev.editable === next.editable &&
     prev.edit === next.edit &&
     prev.selectedElement === next.selectedElement &&
+    prev.selectedPeers === next.selectedPeers &&
     prev.activeSlideId === next.activeSlideId &&
     prev.previewScale === next.previewScale &&
     prev.hideEmpty === next.hideEmpty &&
@@ -685,7 +721,9 @@ function areDeckPropsEqual(prev: DeckCanvasProps, next: DeckCanvasProps): boolea
     prev.frames === next.frames &&
     prev.sizes === next.sizes &&
     prev.headlineText === next.headlineText &&
-    prev.labelText === next.labelText
+    prev.labelText === next.labelText &&
+    prev.guides === next.guides &&
+    prev.snapEnabled === next.snapEnabled
   );
 }
 
@@ -721,6 +759,13 @@ const MemoSlide = React.memo(
       sizes,
       headlineText,
       labelText,
+      guides,
+      snapEnabled,
+      onSnapPreview,
+      selectedPeers,
+      snapOrigins,
+      snapExtras,
+      snapFrameOrigin,
     } = elementsProps;
     const perSlideEdit: EditHandlers | undefined = React.useMemo(
       () =>
@@ -731,9 +776,9 @@ const MemoSlide = React.memo(
               onTextElementTextChange: (id, v) =>
                 edit?.onTextElementTextChange?.(slide.id, id, v),
               onElementChange: (id, t) => edit?.onElementChange?.(slide.id, id, t),
-              onSelectElement: (id) => {
+              onSelectElement: (id, additive) => {
                 edit?.onSelectScreen?.(slide.id);
-                edit?.onSelectElement?.(id ? { slideId: slide.id, elementId: id } : null);
+                edit?.onSelectElement?.(id ? { slideId: slide.id, elementId: id } : null, additive);
               },
             }
           : undefined,
@@ -761,6 +806,13 @@ const MemoSlide = React.memo(
         sizes={sizes}
         headlineText={headlineText}
         labelText={labelText}
+        guides={guides}
+        snapEnabled={snapEnabled}
+        onSnapPreview={onSnapPreview}
+        selectedPeers={selectedPeers}
+        snapOrigins={snapOrigins}
+        snapExtras={snapExtras}
+        snapFrameOrigin={snapFrameOrigin}
       />
     );
     if (connectedCanvas) return elements;
@@ -810,7 +862,14 @@ const MemoSlide = React.memo(
     prev.frames === next.frames &&
     prev.sizes === next.sizes &&
     prev.headlineText === next.headlineText &&
-    prev.labelText === next.labelText,
+    prev.labelText === next.labelText &&
+    prev.guides === next.guides &&
+    prev.snapEnabled === next.snapEnabled &&
+    prev.onSnapPreview === next.onSnapPreview &&
+    prev.selectedPeers === next.selectedPeers &&
+    prev.snapOrigins === next.snapOrigins &&
+    sameSnapExtras(prev.snapExtras || EMPTY_SNAP_EXTRAS, next.snapExtras || EMPTY_SNAP_EXTRAS) &&
+    prev.snapFrameOrigin === next.snapFrameOrigin,
 );
 
 // Figma-style screen title above each frame: click selects, second click or
@@ -982,6 +1041,7 @@ function DeckCanvasInner({
   editable,
   edit,
   selectedElement = null,
+  selectedPeers,
   activeSlideId = null,
   previewScale = 1,
   hideEmpty,
@@ -994,10 +1054,53 @@ function DeckCanvasInner({
   headlineText,
   labelText,
   gap = 0,
+  guides,
+  snapEnabled = true,
 }: DeckCanvasProps) {
   const { cW, cH } = getCanvas(device, sizes);
   const stride = cW + gap;
   const totalW = Math.max(1, slides.length) * cW + Math.max(0, slides.length - 1) * gap;
+  // Live snap indicator lines (Figma red). Owned here so every slide's drag
+  // reports into one overlay; cleared on drop. Never rendered for export:
+  // export callers don't pass guides and never drag.
+  const [snapLines, setSnapLines] = React.useState<SnapLine[]>([]);
+  const onSnapPreview = React.useCallback((lines: SnapLine[]) => {
+    // Drag fires per mousemove — skip the render when the lines are unchanged.
+    setSnapLines((prev) => (sameSnapLines(prev, lines) ? prev : lines));
+  }, []);
+  // Every screen origin in deck-global coords, so edges/centers snap per
+  // screen on a connected deck. Memoized on count (not identity) so content
+  // edits don't invalidate every slide's memo.
+  const snapOrigins = React.useMemo(
+    () => (connectedCanvas ? slides.map((_, i) => i * stride) : [0]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slides.length, stride, connectedCanvas],
+  );
+  // Every element on every OTHER screen (deck-global), so a drag near a
+  // screen boundary also snaps to neighbors Figma-style. Content-compared
+  // (not identity) for the same memo reason — see sameSnapExtras.
+  const snapExtras = React.useMemo(() => {
+    if (!connectedCanvas) return EMPTY_SNAP_EXTRAS;
+    const out: SnapExtra[] = [];
+    slides.forEach((slide, index) => {
+      const x0 = index * stride;
+      const { defaults } = getSlideGeometry(slide, device, sizes);
+      const push = (id: ElementId, rect: Rect | undefined) => {
+        if (rect) {
+          out.push({
+            slideId: slide.id,
+            id,
+            rect: { x: rect.x + x0, y: rect.y, width: rect.width, height: rect.height },
+          });
+        }
+      };
+      push("caption", rectFor("caption", slide, defaults));
+      push("device", rectFor("device", slide, defaults));
+      push("deviceSecondary", rectFor("deviceSecondary", slide, defaults));
+      for (const t of slide.textElements || []) push(toTextElementId(t.id), t.transform);
+    });
+    return out;
+  }, [slides, device, sizes, connectedCanvas, stride]);
   // Editor titles float above each frame (Figma-style); export stays clipped.
   const titleSize = Math.max(24, cW * 0.022);
   const titleOffset = titleSize * 1.9;
@@ -1077,6 +1180,7 @@ function DeckCanvasInner({
               ? selectedElement.elementId
               : null
           }
+          selectedPeers={selectedPeers}
           previewScale={previewScale}
           hideEmpty={hideEmpty}
           headlineFont={headlineFont}
@@ -1089,10 +1193,50 @@ function DeckCanvasInner({
           sizes={sizes}
           headlineText={headlineText}
           labelText={labelText}
+          guides={guides}
+          snapEnabled={snapEnabled}
+          onSnapPreview={onSnapPreview}
+          snapOrigins={snapOrigins}
+          snapExtras={snapExtras}
+          snapFrameOrigin={connectedCanvas ? 0 : index * stride}
           connectedCanvas={connectedCanvas}
           wrapLeft={index * stride}
         />
       ))}
+      {/* Figma-style snap indicators: red lines across the deck. Editor
+          chrome like guides — export uses DeckCanvas without dragging, so
+          snapLines is always empty there. */}
+      {snapLines.length > 0 ? (
+        <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+          {snapLines.map((line, i) =>
+            line.axis === "v" ? (
+              <div
+                key={`snap-v-${line.pos}-${i}`}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  left: line.pos,
+                  width: 2,
+                  background: "#FF3838",
+                }}
+              />
+            ) : (
+              <div
+                key={`snap-h-${line.pos}-${i}`}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: line.pos,
+                  height: 2,
+                  background: "#FF3838",
+                }}
+              />
+            ),
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1285,6 +1429,16 @@ type SlideElementsProps = {
   sizes?: Partial<Record<Device, CanvasSize>>;
   headlineText?: GlobalTextStyle;
   labelText?: GlobalTextStyle;
+  guides?: Guide[];
+  snapEnabled?: boolean;
+  onSnapPreview?: (lines: SnapLine[]) => void;
+  selectedPeers?: SelectedElement[];
+  /** All screen origins in the drag frame (connected: every screen). */
+  snapOrigins?: number[];
+  /** Cross-screen rects, deck-global (connected only). Content-compared. */
+  snapExtras?: SnapExtra[];
+  /** Deck-global X of the drag frame origin (isolated: screen offset). */
+  snapFrameOrigin?: number;
 };
 
 function areSlideElementsEqual(prev: SlideElementsProps, next: SlideElementsProps): boolean {
@@ -1310,7 +1464,14 @@ function areSlideElementsEqual(prev: SlideElementsProps, next: SlideElementsProp
     prev.frames === next.frames &&
     prev.sizes === next.sizes &&
     prev.headlineText === next.headlineText &&
-    prev.labelText === next.labelText
+    prev.labelText === next.labelText &&
+    prev.guides === next.guides &&
+    prev.snapEnabled === next.snapEnabled &&
+    prev.onSnapPreview === next.onSnapPreview &&
+    prev.selectedPeers === next.selectedPeers &&
+    prev.snapOrigins === next.snapOrigins &&
+    sameSnapExtras(prev.snapExtras || EMPTY_SNAP_EXTRAS, next.snapExtras || EMPTY_SNAP_EXTRAS) &&
+    prev.snapFrameOrigin === next.snapFrameOrigin
   );
 }
 
@@ -1334,7 +1495,36 @@ function SlideElementsInner({
   sizes,
   headlineText,
   labelText,
+  guides,
+  snapEnabled = true,
+  onSnapPreview,
+  selectedPeers,
+  snapOrigins,
+  snapExtras,
+  snapFrameOrigin = 0,
 }: SlideElementsProps) {
+  // Gravity follows zoom: ~5 screen px at any zoom level.
+  const snapThreshold = snapThresholdForScale(previewScale);
+  // Indicator lines are reported deck-global (the overlay lives on the deck
+  // root) while drag math runs in frame coords — shift vertical lines back.
+  // Connected frames start at 0 (identity); isolated screens shift by offset.
+  const reportSnap = onSnapPreview
+    ? (lines: SnapLine[]) =>
+        onSnapPreview(
+          snapFrameOrigin
+            ? lines.map((l) => (l.axis === "v" ? { ...l, pos: l.pos + snapFrameOrigin } : l))
+            : lines,
+        )
+    : undefined;
+  // Peer ids on this slide for multi-selection highlight. Stable inputs keep
+  // the slide memo intact; the set itself is rebuilt per render (cheap).
+  const peerIdSet = React.useMemo(() => {
+    const set = new Set<ElementId>();
+    for (const p of selectedPeers || []) {
+      if (p.slideId === slide.id) set.add(p.elementId);
+    }
+    return set;
+  }, [selectedPeers, slide.id]);
   const screenshot = resolveScreenshot(slide.screenshot, locale);
   const screenshotSecondary = resolveScreenshot(slide.screenshotSecondary, locale);
   const { cW, cH, Frame, frameAspect, defaults } = getSlideGeometry(slide, device, sizes);
@@ -1371,10 +1561,56 @@ function SlideElementsInner({
     return { ...t, x: t.x - screenX };
   }
 
+  // Deck-global rects of every element on this slide, so each dragged
+  // element can snap to its siblings (Figma smart guides). Built lazily per
+  // render; slides memoize on identity so untouched screens skip the work.
+  function siblingRects(): { id: ElementId; rect: Rect }[] {
+    const out: { id: ElementId; rect: Rect }[] = [];
+    const captionRect = rectFor("caption", slide, defaults);
+    const deviceRect = rectFor("device", slide, defaults);
+    const secondaryRect = rectFor("deviceSecondary", slide, defaults);
+    if (captionRect) out.push({ id: "caption", rect: toGlobal(captionRect) });
+    if (deviceRect) out.push({ id: "device", rect: toGlobal(deviceRect) });
+    if (secondaryRect) out.push({ id: "deviceSecondary", rect: toGlobal(secondaryRect) });
+    for (const t of slide.textElements || []) {
+      out.push({ id: toTextElementId(t.id), rect: toGlobal(t.transform) });
+    }
+    return out;
+  }
+
+  function snapTargetsFor(id: ElementId): { v: SnapLine[]; h: SnapLine[] } {
+    // Own-screen siblings are already in frame coords. Deck-global extras
+    // (other screens) and vertical guides shift into the frame; horizontal
+    // guides are frame-independent (all screens share Y).
+    const own = siblingRects()
+      .filter((s) => s.id !== id)
+      .map((s) => s.rect);
+    const foreign = (snapExtras || [])
+      .filter((s) => s.slideId !== slide.id)
+      .map((s) => ({
+        x: s.rect.x - snapFrameOrigin,
+        y: s.rect.y,
+        width: s.rect.width,
+        height: s.rect.height,
+      }));
+    return buildSnapTargets({
+      screenOrigins: snapOrigins || [screenX],
+      cW,
+      cH,
+      others: [...own, ...foreign],
+      guides: (guides || []).map((g) => ({
+        axis: g.axis,
+        pos: g.axis === "v" ? g.pos - snapFrameOrigin : g.pos,
+      })),
+    });
+  }
+
   function renderCaption() {
     if (!captionRect) return null;
     const saved = slide.transforms?.caption;
     const rotation = saved?.rotation ?? 0;
+    const flipH = saved?.flipH ?? false;
+    const flipV = saved?.flipV ?? false;
     const zIndex = saved?.zIndex ?? 4;
     const inner = (
       <Caption
@@ -1401,20 +1637,28 @@ function SlideElementsInner({
         boundsH={boundsH}
         editable={editable}
         previewScale={previewScale}
+        snapTargets={reportSnap ? snapTargetsFor("caption") : undefined}
+        snapEnabled={snapEnabled}
+        snapThreshold={snapThreshold}
+        onSnapPreview={reportSnap}
         rotation={rotation}
+        flipH={flipH}
+        flipV={flipV}
         onChange={(t) =>
           edit?.onElementChange?.(
             "caption",
             toLocal({
               ...t,
               rotation: t.rotation ?? rotation,
+              flipH: t.flipH ?? flipH,
+              flipV: t.flipV ?? flipV,
               zIndex: t.zIndex ?? zIndex,
             }),
           )
         }
         zIndex={zIndex}
-        selected={selectedElementId === "caption"}
-        onSelect={() => edit?.onSelectElement?.("caption")}
+        selected={selectedElementId === "caption" || peerIdSet.has("caption")}
+        onSelect={(additive) => edit?.onSelectElement?.("caption", additive)}
         allowOverflow={allowCrossScreen}
         label="Headline"
       >
@@ -1428,6 +1672,8 @@ function SlideElementsInner({
   function renderDevice(id: "device" | "deviceSecondary", rect: Rect, src: string, extraStyle?: React.CSSProperties) {
     const saved = slide.transforms?.[id];
     const rotation = saved?.rotation ?? 0;
+    const flipH = saved?.flipH ?? false;
+    const flipV = saved?.flipV ?? false;
     const zIndex = saved?.zIndex ?? (id === "deviceSecondary" ? 2 : 3);
     return (
       <Movable
@@ -1436,13 +1682,21 @@ function SlideElementsInner({
         boundsH={boundsH}
         editable={editable}
         previewScale={previewScale}
+        snapTargets={reportSnap ? snapTargetsFor(id) : undefined}
+        snapEnabled={snapEnabled}
+        snapThreshold={snapThreshold}
+        onSnapPreview={reportSnap}
         rotation={rotation}
+        flipH={flipH}
+        flipV={flipV}
         onChange={(t) =>
           edit?.onElementChange?.(
             id,
             toLocal({
               ...t,
               rotation: t.rotation ?? rotation,
+              flipH: t.flipH ?? flipH,
+              flipV: t.flipV ?? flipV,
               zIndex: t.zIndex ?? zIndex,
             }),
           )
@@ -1450,8 +1704,8 @@ function SlideElementsInner({
         lockAspectRatio={frameAspect}
         zIndex={zIndex}
         allowOverflow
-        selected={selectedElementId === id}
-        onSelect={() => edit?.onSelectElement?.(id)}
+        selected={selectedElementId === id || peerIdSet.has(id)}
+        onSelect={(additive) => edit?.onSelectElement?.(id, additive)}
         label={id === "deviceSecondary" ? "Back device" : "Device"}
       >
         <Frame
@@ -1468,6 +1722,8 @@ function SlideElementsInner({
     const elementId = toTextElementId(textElement.id);
     const rect = textElement.transform;
     const rotation = rect.rotation ?? 0;
+    const flipH = rect.flipH ?? false;
+    const flipV = rect.flipV ?? false;
     const zIndex = rect.zIndex ?? 5 + index;
     const textColor = textElement.color || (inverted ? theme.fgAlt : theme.fg);
     // Unset alignment follows the locale direction: right for RTL.
@@ -1481,20 +1737,28 @@ function SlideElementsInner({
         boundsH={boundsH}
         editable={editable}
         previewScale={previewScale}
+        snapTargets={reportSnap ? snapTargetsFor(elementId) : undefined}
+        snapEnabled={snapEnabled}
+        snapThreshold={snapThreshold}
+        onSnapPreview={reportSnap}
         rotation={rotation}
+        flipH={flipH}
+        flipV={flipV}
         onChange={(t) =>
           edit?.onElementChange?.(
             elementId,
             toLocal({
               ...t,
               rotation: t.rotation ?? rotation,
+              flipH: t.flipH ?? flipH,
+              flipV: t.flipV ?? flipV,
               zIndex: t.zIndex ?? zIndex,
             }),
           )
         }
         zIndex={zIndex}
-        selected={selectedElementId === elementId}
-        onSelect={() => edit?.onSelectElement?.(elementId)}
+        selected={selectedElementId === elementId || peerIdSet.has(elementId)}
+        onSelect={(additive) => edit?.onSelectElement?.(elementId, additive)}
         allowOverflow={allowCrossScreen}
         label={`Overlay text ${index + 1}`}
       >
@@ -1595,10 +1859,16 @@ function Movable({
   lockAspectRatio,
   zIndex,
   rotation = 0,
+  flipH = false,
+  flipV = false,
   allowOverflow = false,
   selected = false,
   onSelect,
   label,
+  snapTargets,
+  snapEnabled = true,
+  snapThreshold = SNAP_THRESHOLD,
+  onSnapPreview,
 }: {
   rect: Rect;
   boundsW: number;
@@ -1610,15 +1880,28 @@ function Movable({
   lockAspectRatio?: number | boolean;
   zIndex?: number;
   rotation?: number;
+  flipH?: boolean;
+  flipV?: boolean;
   allowOverflow?: boolean;
   selected?: boolean;
-  onSelect?: () => void;
+  /** additive = Shift-click toggles a multi-selection peer. */
+  onSelect?: (additive?: boolean) => void;
   label?: string;
+  snapTargets?: { v: SnapLine[]; h: SnapLine[] };
+  snapEnabled?: boolean;
+  /** Gravity in canvas px — scaled to ~5 screen px by the caller. */
+  snapThreshold?: number;
+  onSnapPreview?: (lines: SnapLine[]) => void;
 }) {
   const rotationRef = React.useRef(rotation);
   React.useEffect(() => {
     rotationRef.current = rotation;
   }, [rotation]);
+  // Mirror + rotation share one transform so preview, thumbs, and export
+  // render identically (both paths use `rotated` below).
+  const mirror = `${flipH ? "scaleX(-1)" : ""}${flipH && flipV ? " " : ""}${flipV ? "scaleY(-1)" : ""}`;
+  const spin = rotation ? `rotate(${rotation}deg)` : "";
+  const flipTransform = `${spin}${spin && mirror ? " " : ""}${mirror}` || undefined;
 
   function startRotate(e: React.PointerEvent<HTMLButtonElement>) {
     e.preventDefault();
@@ -1635,9 +1918,11 @@ function Movable({
 
     const handleMove = (event: PointerEvent) => {
       event.preventDefault();
-      const nextRotation = normalizeRotation(
+      let nextRotation = normalizeRotation(
         startRotation + pointerAngle(event.clientX, event.clientY, centerX, centerY) - startAngle,
       );
+      // Figma parity: Shift snaps canvas rotation to 15° increments.
+      if (event.shiftKey) nextRotation = Math.round(nextRotation / 15) * 15;
       rotationRef.current = nextRotation;
       onChange({
         x: display.x,
@@ -1645,6 +1930,8 @@ function Movable({
         width: display.width,
         height: display.height,
         rotation: nextRotation,
+        flipH,
+        flipV,
         zIndex,
       });
     };
@@ -1685,15 +1972,16 @@ function Movable({
       boundsH,
       allowOverflow,
     );
-    onChange({ ...next, rotation, zIndex });
+    onChange({ ...next, rotation, flipH, flipV, zIndex });
   };
   const rotated = (
     <div
-      onMouseDown={() => {
-        if (editable) onSelect?.();
+      onMouseDown={(e) => {
+        // Shift-click toggles a multi-selection peer (Figma).
+        if (editable) onSelect?.(e.shiftKey);
       }}
       onFocus={() => {
-        if (editable) onSelect?.();
+        if (editable) onSelect?.(false);
       }}
       onKeyDown={nudge}
       tabIndex={editable ? 0 : undefined}
@@ -1702,7 +1990,7 @@ function Movable({
       style={{
         width: "100%",
         height: "100%",
-        transform: rotation ? `rotate(${rotation}deg)` : undefined,
+        transform: flipTransform,
         transformOrigin: "center center",
       }}
     >
@@ -1738,18 +2026,45 @@ function Movable({
       lockAspectRatio={lockAspectRatio}
       position={{ x: display.x, y: display.y }}
       size={{ width: display.width, height: display.height }}
-      onDragStart={() => onSelect?.()}
-      onResizeStart={() => onSelect?.()}
-      onDragStop={(_e, d) => {
-        const next = clampRect(
+      onDragStart={(e) => onSelect?.(dragShift(e))}
+      onResizeStart={(e) => onSelect?.(dragShift(e))}
+      onDrag={(e, d) => {
+        // Live Figma-style snap indicator; the snap itself applies on release.
+        if (!snapTargets || !onSnapPreview) return;
+        if (snapSuspended(e, snapEnabled)) {
+          onSnapPreview([]);
+          return;
+        }
+        const preview = snapDrag(
           { x: d.x, y: d.y, width: display.width, height: display.height },
+          snapTargets.v,
+          snapTargets.h,
+          snapThreshold,
+        );
+        onSnapPreview(preview.lines);
+      }}
+      onDragStop={(e, d) => {
+        let origin = { x: d.x, y: d.y };
+        if (snapTargets && !snapSuspended(e, snapEnabled)) {
+          const snapped = snapDrag(
+            { x: d.x, y: d.y, width: display.width, height: display.height },
+            snapTargets.v,
+            snapTargets.h,
+            snapThreshold,
+          );
+          origin = { x: snapped.x, y: snapped.y };
+        }
+        onSnapPreview?.([]);
+        const next = clampRect(
+          { x: origin.x, y: origin.y, width: display.width, height: display.height },
           boundsW,
           boundsH,
           allowOverflow,
         );
-        onChange({ ...next, rotation, zIndex });
+        onChange({ ...next, rotation, flipH, flipV, zIndex });
       }}
       onResizeStop={(_e, _dir, ref, _delta, position) => {
+        onSnapPreview?.([]);
         const next = clampRect(
           {
             x: position.x,
@@ -1761,7 +2076,7 @@ function Movable({
           boundsH,
           allowOverflow,
         );
-        onChange({ ...next, rotation, zIndex });
+        onChange({ ...next, rotation, flipH, flipV, zIndex });
       }}
       style={{ zIndex }}
       resizeHandleStyles={handleStyle}
@@ -1785,6 +2100,26 @@ function Movable({
       </button>
     </Rnd>
   );
+}
+
+function sameSnapLines(a: SnapLine[], b: SnapLine[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (line, i) =>
+      line.axis === b[i].axis && line.pos === b[i].pos && line.source === b[i].source,
+  );
+}
+
+// Shift held on a drag/resize gesture preserves additive (Shift-click)
+// selection instead of collapsing it back to a single element.
+function dragShift(e: unknown): boolean {
+  return (e as { shiftKey?: boolean } | null | undefined)?.shiftKey === true;
+}
+
+// Figma parity: holding Control suspends snapping; the toggle disables it.
+function snapSuspended(e: unknown, snapEnabled: boolean): boolean {
+  if (!snapEnabled) return true;
+  return (e as { ctrlKey?: boolean } | null | undefined)?.ctrlKey === true;
 }
 
 function pointerAngle(x: number, y: number, centerX: number, centerY: number) {

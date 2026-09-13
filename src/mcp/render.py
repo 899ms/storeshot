@@ -426,16 +426,25 @@ def composite_at(base, layer, x, y):
     base.alpha_composite(layer.crop((sx0, sy0, sx0 + w, sy0 + h)), (dx0, dy0))
 
 
-def paste_rotated(base, layer, cx, cy, angle):
+def paste_rotated(base, layer, cx, cy, angle, flip_h=False, flip_v=False):
     """Paste RGBA layer centered at (cx,cy), rotated by angle degrees."""
+    if flip_h:
+        layer = layer.transpose(Image.FLIP_LEFT_RIGHT)
+    if flip_v:
+        layer = layer.transpose(Image.FLIP_TOP_BOTTOM)
     if angle:
         layer = layer.rotate(angle, resample=Image.BICUBIC, expand=True)
     composite_at(base, layer, cx - layer.size[0] / 2, cy - layer.size[1] / 2)
 
 
-def paste_about(base, layer, ox, oy, pivx, pivy, css_angle):
+def paste_about(base, layer, ox, oy, pivx, pivy, css_angle, flip_h=False, flip_v=False):
     """Paste layer with origin (ox,oy), rotated about pivot (pivx,pivy) in
-    layer coords. css_angle follows CSS rotate() (clockwise positive)."""
+    layer coords. css_angle follows CSS rotate() (clockwise positive).
+    Flips mirror local space first, matching CSS `rotate(r) scale(-1)`."""
+    if flip_h:
+        layer = layer.transpose(Image.FLIP_LEFT_RIGHT)
+    if flip_v:
+        layer = layer.transpose(Image.FLIP_TOP_BOTTOM)
     if css_angle:
         # rotate(-a) matches CSS rotate(a) (verified empirically); the pivot
         # follows PIL's pixel mapping rx = cos*dx + sin*dy,
@@ -690,7 +699,8 @@ def paint_slide(canvas, slide, ox, cW, cH, ctx, warnings, clip_to_screen):
             layer, (ax, ay) = render_text_element(fonts, el, cW, cH, theme, inverted, locale, ctx["label_font"])
             cx = t.get("x", 0) + t.get("width", 0) / 2
             cy = t.get("y", 0) + t.get("height", 0) / 2
-            paste_about(screen, layer, ax, ay, cx - ax, cy - ay, t.get("rotation") or 0)
+            paste_about(screen, layer, ax, ay, cx - ax, cy - ay, t.get("rotation") or 0,
+                        t.get("flipH") or False, t.get("flipV") or False)
     else:
         shots = {
             "device": resolve_upload(workspace, slide.get("screenshot", ""), locale),
@@ -707,7 +717,8 @@ def paint_slide(canvas, slide, ox, cW, cH, ctx, warnings, clip_to_screen):
             layer = render_frame(device, rect["w"], rect["h"], im,
                                  secondary=(key == "deviceSecondary"), finish=finish)
             paste_rotated(screen, layer, rect["x"] + rect["w"] / 2, rect["y"] + rect["h"] / 2,
-                          saved.get("rotation") or 0)
+                          saved.get("rotation") or 0,
+                          saved.get("flipH") or False, saved.get("flipV") or False)
         rect = rect_for(transforms, "caption", defaults)
         if rect:
             saved = transforms.get("caption") or {}
@@ -715,13 +726,15 @@ def paint_slide(canvas, slide, ox, cW, cH, ctx, warnings, clip_to_screen):
                                              ctx["headline_font"], ctx["label_font"])
             cx = rect["x"] + rect["w"] / 2
             cy = rect["y"] + rect["h"] / 2
-            paste_about(screen, layer, ax, ay, cx - ax, cy - ay, saved.get("rotation") or 0)
+            paste_about(screen, layer, ax, ay, cx - ax, cy - ay, saved.get("rotation") or 0,
+                        saved.get("flipH") or False, saved.get("flipV") or False)
         for el in slide.get("textElements") or []:
             t = el.get("transform") or {}
             layer, (ax, ay) = render_text_element(fonts, el, cW, cH, theme, inverted, locale, ctx["label_font"])
             cx = t.get("x", 0) + t.get("width", 0) / 2
             cy = t.get("y", 0) + t.get("height", 0) / 2
-            paste_about(screen, layer, ax, ay, cx - ax, cy - ay, t.get("rotation") or 0)
+            paste_about(screen, layer, ax, ay, cx - ax, cy - ay, t.get("rotation") or 0,
+                        t.get("flipH") or False, t.get("flipV") or False)
 
     # Isolated canvases are exactly one screen wide, so canvas bounds clip
     # overflow automatically (each screen clips its own elements, like the

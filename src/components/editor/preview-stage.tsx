@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Copy, Maximize2, Ruler, Type, ZoomIn, ZoomOut } from "lucide-react";
+import { Copy, Magnet, Maximize2, Ruler, Type, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -29,6 +29,7 @@ import { LeftRuler, TopRuler, loadRulers, saveRulers } from "./rulers";
 import type { RulerHandle, RulerSnapshot } from "./rulers";
 import { loadGuides, saveGuides } from "@/lib/guides";
 import type { Guide, GuideAxis } from "@/lib/guides";
+import { loadSnap, saveSnap } from "@/lib/snap";
 
 const ZOOM_KEY = "screenshots.zoom";
 
@@ -51,6 +52,7 @@ type Props = {
   locale: string;
   connectedCanvas: boolean;
   selectedElement: SelectedElement | null;
+  selectedPeers?: SelectedElement[];
   headlineFont?: string;
   labelFont?: string;
   background?: ScreenBackground;
@@ -61,7 +63,7 @@ type Props = {
   onHeadlineChange: (slide: Slide, v: string) => void;
   onTextElementTextChange: (slideId: string, id: string, v: string) => void;
   onElementChange: (slideId: string, id: ElementId, t: ElementTransform) => void;
-  onSelectElement: (element: SelectedElement | null) => void;
+  onSelectElement: (element: SelectedElement | null, additive?: boolean) => void;
   onRenameScreen?: (slideId: string, name: string) => void;
   sizes?: Partial<Record<Device, CanvasSize>>;
   frames?: Partial<Record<"phone" | "tablet", FrameFinish>>;
@@ -85,6 +87,7 @@ export function PreviewStage({
   locale,
   connectedCanvas,
   selectedElement,
+  selectedPeers,
   headlineFont,
   labelFont,
   background,
@@ -116,6 +119,7 @@ export function PreviewStage({
   const [fitScale, setFitScale] = React.useState(0.2);
   const [zoom, setZoom] = React.useState(() => loadZoom(device));
   const [rulersOn, setRulersOn] = React.useState(() => loadRulers());
+  const [snapOn, setSnapOn] = React.useState(() => loadSnap());
   // Live ruler geometry. Mutated (never setState) so scroll/move updates stay
   // off the render path; rulers repaint imperatively via requestAnimationFrame.
   const snapRef = React.useRef<RulerSnapshot>({
@@ -189,6 +193,14 @@ export function PreviewStage({
     setRulersOn((prev) => {
       const next = !prev;
       saveRulers(next);
+      return next;
+    });
+  }, []);
+
+  const toggleSnap = React.useCallback(() => {
+    setSnapOn((prev) => {
+      const next = !prev;
+      saveSnap(next);
       return next;
     });
   }, []);
@@ -537,6 +549,19 @@ export function PreviewStage({
           >
             <Ruler className="h-3.5 w-3.5" />
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded text-figma-secondary hover:text-figma-text data-[pressed=true]:bg-figma-hover data-[pressed=true]:text-figma-text"
+            onClick={toggleSnap}
+            title={snapOn ? "Disable snapping (hold Ctrl to suspend while dragging)" : "Enable snapping"}
+            aria-label="Toggle snapping"
+            aria-pressed={snapOn}
+            data-pressed={snapOn}
+          >
+            <Magnet className="h-3.5 w-3.5" />
+          </Button>
           <span className="hidden px-1.5 text-[11px] tabular-nums lg:inline">{cW}×{cH}</span>
           <Button
             type="button"
@@ -658,6 +683,9 @@ export function PreviewStage({
               sizes={sizes}
               headlineText={headlineText}
               labelText={labelText}
+              guides={guides}
+              snapEnabled={snapOn}
+              selectedPeers={selectedPeers}
               edit={deckEdit}
             />
           </div>

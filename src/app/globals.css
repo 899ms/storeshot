@@ -83,18 +83,27 @@
   }
 }
 
-/* Electron shell (macOS hiddenInset): the toolbar doubles as the window drag
-   handle. Interactive descendants opt out so buttons stay clickable and text
-   stays selectable. Web builds never get the class, so this is inert there. */
-.electron-shell-bar {
+/* Electron shell (macOS hiddenInset): the whole top bar is the window drag
+   handle. Interactive clusters opt out with `electron-no-drag` so buttons,
+   inputs, and menus stay clickable. Web builds never get the class, so this
+   is inert there. While a Radix overlay is open the handle yields so an
+   outside click on empty bar space dismisses the menu instead of dragging
+   (drag regions swallow mouse events). */
+.electron-drag-bar {
   -webkit-app-region: drag;
 }
-.electron-shell-bar button,
-.electron-shell-bar input,
-.electron-shell-bar select,
-.electron-shell-bar textarea,
-.electron-shell-bar a,
-.electron-shell-bar [contenteditable] {
+.electron-drag-bar button,
+.electron-drag-bar input,
+.electron-drag-bar select,
+.electron-drag-bar textarea,
+.electron-drag-bar a,
+.electron-drag-bar [contenteditable] {
+  -webkit-app-region: no-drag;
+}
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+body:has([role="menu"], [role="listbox"]) .electron-drag-bar {
   -webkit-app-region: no-drag;
 }
 
