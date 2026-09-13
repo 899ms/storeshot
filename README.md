@@ -30,6 +30,14 @@ store-ready export.
 - **MCP server** — drive the editor from Claude/Agents over stdio
   (`get_project`, `lint_deck`, `render_export`, `translate_locale`, …).
 
+## Install (macOS)
+
+Download the latest **StoreShot-…dmg** from
+[Releases](https://github.com/stackwares/storeshot-electron/releases)
+(universal — Apple Silicon and Intel). Open the DMG, drag **StoreShot** into
+Applications, and launch. Builds are Developer ID signed and notarized, so
+Gatekeeper should not block them.
+
 ## Quick start
 
 **Web (any platform):**
@@ -39,13 +47,15 @@ bun install
 bun dev        # http://localhost:3000
 ```
 
-**Native macOS app:**
+**Native macOS app (from source):**
 
 ```bash
 bun install
-bun run build
-bun run dist:mac   # → StoreShot.dmg
+bun run dist:mac:universal   # → dist/StoreShot-*.dmg
 ```
+
+Tagged releases are built and notarized in CI — see
+[build/macos-signing.md](build/macos-signing.md).
 
 Or run the shell against the dev server:
 
