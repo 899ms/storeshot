@@ -96,12 +96,6 @@ const page = `<!DOCTYPE html>
       margin: 0 auto;
       padding: 2rem 0 4rem;
     }
-    .status {
-      font-size: 0.9rem;
-      color: var(--muted);
-      margin-bottom: 1.25rem;
-    }
-    .status a { color: var(--link); }
     .markdown-body img { max-width: 100%; height: auto; border-radius: 6px; }
     .markdown-body h1, .markdown-body h2 {
       padding-bottom: 0.3em;
@@ -157,10 +151,6 @@ const page = `<!DOCTYPE html>
     <a class="muted" href="https://github.com/${repo}#readme">View on GitHub</a>
   </header>
   <main>
-    <p class="status">
-      Built from <a href="https://github.com/${repo}/blob/${branch}/README.md">README.md</a>
-      on <code>${branch}</code>.
-    </p>
     <article class="markdown-body">
 ${html}
     </article>
