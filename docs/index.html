@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StoreShot — App Store screenshot design on a connected canvas</title>
+  <meta name="description" content="Design App Store and Google Play marketing screenshots on a connected canvas — layouts, device frames, locales, AI translation, and one-click store-ready export. Open source." />
+  <meta property="og:title" content="StoreShot — App Store screenshot design" />
+  <meta property="og:description" content="Connected canvas editor for App Store & Google Play marketing screenshots. Open source by Stackwares." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://storeshot.stackwares.com" />
+  <meta property="og:image" content="https://storeshot.stackwares.com/assets/editor.webp" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/png" href="assets/icon.png" />
+  <link rel="canonical" href="https://storeshot.stackwares.com" />
+  <style>
+    :root {
+      --ink: #0B0D12;
+      --panel: #12151C;
+      --panel-2: #1A1F29;
+      --line: #2A3140;
+      --text: #E8EDF5;
+      --muted: #93A0B4;
+      --mint: #3DDBA0;
+      --blue: #3B7DFF;
+      --butter: #FFE28A;
+      --lilac: #C4B5FD;
+      --paper: #F2F4F1;
+      --paper-ink: #14171C;
+      --radius: 12px;
+      --font: "Avenir Next", Avenir, "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      background: var(--ink);
+      color: var(--text);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    img { max-width: 100%; display: block; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; }
+
+    .wrap {
+      width: min(1120px, calc(100% - 2.5rem));
+      margin-inline: auto;
+    }
+
+    /* —— Nav —— */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      background: color-mix(in srgb, var(--ink) 82%, transparent);
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+      gap: 1rem;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .brand img {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      object-fit: cover;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      border-radius: 999px;
+      padding: 0.55rem 1.05rem;
+      font-size: 0.92rem;
+      font-weight: 600;
+      border: 1px solid transparent;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+      cursor: pointer;
+    }
+    .btn:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 2px;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary {
+      background: var(--blue);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #5A91FF; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--line);
+    }
+    .btn-ghost:hover {
+      border-color: color-mix(in srgb, var(--muted) 60%, var(--line));
+      background: color-mix(in srgb, var(--panel-2) 80%, transparent);
+    }
+    .btn-dark {
+      background: var(--paper-ink);
+      color: #fff;
+    }
+    .btn-dark:hover { background: #2A303A; }
+
+    /* —— Hero —— */
+    .hero {
+      position: relative;
+      padding: 4.5rem 0 2.5rem;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: -20% 10% auto;
+      height: 420px;
+      background:
+        radial-gradient(ellipse at 30% 20%, color-mix(in srgb, var(--mint) 18%, transparent), transparent 55%),
+        radial-gradient(ellipse at 70% 10%, color-mix(in srgb, var(--blue) 20%, transparent), transparent 50%);
+      pointer-events: none;
+      filter: blur(8px);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--mint);
+      border: 1px solid color-mix(in srgb, var(--mint) 35%, transparent);
+      background: color-mix(in srgb, var(--mint) 10%, transparent);
+      border-radius: 999px;
+      padding: 0.35rem 0.7rem;
+      margin-bottom: 1.25rem;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--mint);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--mint) 25%, transparent);
+    }
+    .hero h1 {
+      font-size: clamp(2.35rem, 5.5vw, 3.85rem);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      font-weight: 650;
+      max-width: 14ch;
+      margin-bottom: 1.15rem;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(100deg, var(--mint), #7DD3FC 55%, var(--lilac));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero-lead {
+      color: var(--muted);
+      font-size: clamp(1rem, 2vw, 1.15rem);
+      max-width: 38rem;
+      margin-bottom: 1.75rem;
+    }
+    .hero-cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-family: var(--mono);
+    }
+    .badges span { opacity: 0.9; }
+
+    /* —— Canvas strip (signature) —— */
+    .canvas-band {
+      margin-top: 3rem;
+      position: relative;
+      padding: 1.75rem 0 2.25rem;
+      border-block: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--panel) 90%, black), color-mix(in srgb, var(--panel) 40%, transparent)),
+        repeating-linear-gradient(
+          90deg,
+          transparent 0,
+          transparent 47px,
+          color-mix(in srgb, var(--line) 45%, transparent) 48px
+        );
+    }
+    .canvas-ruler {
+      display: flex;
+      justify-content: space-between;
+      width: min(1120px, calc(100% - 2.5rem));
+      margin: 0 auto 1rem;
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--muted);
+      opacity: 0.7;
+    }
+    .canvas-scroller {
+      overflow-x: auto;
+      padding: 0.5rem 0 1rem;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line) transparent;
+    }
+    .canvas-row {
+      display: flex;
+      gap: 1.5rem;
+      width: max-content;
+      margin-inline: auto;
+      padding-inline: max(1.25rem, calc((100vw - 1120px) / 2));
+      min-width: 100%;
+    }
+    .screen-card {
+      width: 220px;
+      border-radius: 18px;
+      border: 1px solid color-mix(in srgb, var(--line) 90%, white);
+      background: var(--panel-2);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+      flex: 0 0 auto;
+      position: relative;
+    }
+    .screen-card.selected {
+      outline: 2px solid var(--blue);
+      outline-offset: 3px;
+      box-shadow: 0 18px 50px color-mix(in srgb, var(--blue) 25%, rgba(0,0,0,0.4));
+    }
+    .screen-card .chip {
+      position: absolute;
+      top: -0.85rem;
+      left: 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.04em;
+      color: var(--blue);
+      background: var(--panel);
+      border: 1px solid color-mix(in srgb, var(--blue) 45%, var(--line));
+      border-radius: 6px;
+      padding: 0.15rem 0.4rem;
+    }
+    .phone {
+      aspect-ratio: 9 / 19.5;
+      padding: 10px 9px 12px;
+      background: #0a0a0c;
+      border-radius: 18px;
+    }
+    .phone-screen {
+      height: 100%;
+      border-radius: 12px;
+      padding: 1.1rem 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      overflow: hidden;
+    }
+    .phone-screen .label {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.75;
+      text-align: center;
+    }
+    .phone-screen h3 {
+      font-size: 1.05rem;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      text-align: center;
+      color: #101418;
+      font-weight: 700;
+    }
+    .phone-screen .sub {
+      font-size: 0.68rem;
+      text-align: center;
+      color: #334;
+      line-height: 1.35;
+    }
+    .mini-device {
+      margin: auto;
+      width: 62%;
+      aspect-ratio: 9/18;
+      border-radius: 14px;
+      border: 3px solid #1a1d22;
+      background:
+        linear-gradient(160deg, #fff 0%, #f4f7f5 100%);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+      position: relative;
+      overflow: hidden;
+    }
+    .mini-device::before {
+      content: "";
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 28%;
+      height: 5px;
+      border-radius: 999px;
+      background: #1a1d22;
+    }
+    .mini-device .ui-bar {
+      margin-top: 1.4rem;
+      height: 8px;
+      width: 70%;
+      margin-inline: auto;
+      border-radius: 999px;
+      background: #d7dde3;
+    }
+    .mini-device .ui-block {
+      margin: 0.7rem auto 0;
+      width: 78%;
+      height: 42%;
+      border-radius: 10px;
+      background: linear-gradient(145deg, #e8ecef, #f7f9fa);
+    }
+    .mesh-mint { background: linear-gradient(165deg, #C9F7E2 0%, #7BE0B4 45%, #E8FFF5 100%); }
+    .mesh-butter { background: linear-gradient(165deg, #FFF3B8 0%, #FFD666 50%, #FFF8D9 100%); }
+    .mesh-lilac { background: linear-gradient(165deg, #E9E0FF 0%, #C4B5FD 48%, #F5F0FF 100%); }
+    .mesh-rose { background: linear-gradient(165deg, #FFE0EC 0%, #F9A8D4 48%, #FFF0F6 100%); }
+    .mesh-sky { background: linear-gradient(165deg, #DCEBFF 0%, #93C5FD 48%, #F0F7FF 100%); }
+
+    /* —— Product shot —— */
+    .product {
+      padding: 4.5rem 0 1rem;
+    }
+    .product-frame {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--panel);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+    }
+    .product-chrome {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel-2) 90%, black);
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #3a4150;
+    }
+    .dot:nth-child(1) { background: #FF5F57; }
+    .dot:nth-child(2) { background: #FEBC2E; }
+    .dot:nth-child(3) { background: #28C840; }
+    .product-chrome span {
+      margin-left: 0.6rem;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .product-frame img {
+      width: 100%;
+      height: auto;
+    }
+    .product-caption {
+      margin-top: 0.85rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    /* —— Features —— */
+    .section {
+      padding: 5rem 0;
+    }
+    .section-head {
+      max-width: 36rem;
+      margin-bottom: 2.25rem;
+    }
+    .section-head h2 {
+      font-size: clamp(1.7rem, 3vw, 2.2rem);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 0.65rem;
+      font-weight: 650;
+    }
+    .section-head p { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.2rem 1.35rem;
+      transition: border-color 150ms ease, transform 150ms ease;
+    }
+    .card:hover {
+      border-color: color-mix(in srgb, var(--mint) 35%, var(--line));
+      transform: translateY(-2px);
+    }
+    .card .icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 0.9rem;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .card h3 {
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.4rem;
+      font-weight: 600;
+    }
+    .card p {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .icon-mint { background: var(--mint); }
+    .icon-blue { background: var(--blue); color: #fff; }
+    .icon-butter { background: var(--butter); }
+    .icon-lilac { background: var(--lilac); }
+    .icon-sky { background: #93C5FD; }
+    .icon-paper { background: var(--paper); }
+
+    /* —— Light band —— */
+    .band-light {
+      background: var(--paper);
+      color: var(--paper-ink);
+    }
+    .band-light .section-head p { color: #516074; }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+    .step {
+      background: #fff;
+      border: 1px solid #D9DEE5;
+      border-radius: var(--radius);
+      padding: 1.2rem;
+    }
+    .step .num {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: #6B7A90;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.55rem;
+    }
+    .step h3 {
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.35rem;
+    }
+    .step p { color: #516074; font-size: 0.92rem; }
+    .step code, .codeblock code {
+      font-family: var(--mono);
+      font-size: 0.84em;
+      background: #E8ECEF;
+      border-radius: 4px;
+      padding: 0.1em 0.35em;
+    }
+    .codeblock {
+      margin-top: 1.75rem;
+      background: #12151C;
+      color: #D7E0EC;
+      border-radius: var(--radius);
+      padding: 1.1rem 1.2rem;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 0.86rem;
+      line-height: 1.7;
+    }
+    .codeblock .cm { color: #7D8AA0; }
+    .codeblock .cmd { color: var(--mint); }
+
+    /* —— Note —— */
+    .note {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1rem;
+      align-items: start;
+      border: 1px solid color-mix(in srgb, var(--butter) 40%, var(--line));
+      background: color-mix(in srgb, var(--butter) 8%, var(--panel));
+      border-radius: var(--radius);
+      padding: 1.1rem 1.2rem;
+    }
+    .note strong { color: var(--butter); }
+    .note p { color: var(--muted); font-size: 0.94rem; }
+    .note-tag {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--butter);
+      border: 1px solid color-mix(in srgb, var(--butter) 40%, transparent);
+      border-radius: 6px;
+      padding: 0.25rem 0.45rem;
+    }
+
+    /* —— Footer —— */
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 2.5rem 0 3rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: space-between;
+      align-items: center;
+    }
+    footer a {
+      color: var(--text);
+      border-bottom: 1px solid color-mix(in srgb, var(--muted) 40%, transparent);
+    }
+    footer a:hover { border-color: var(--text); }
+
+    @media (max-width: 640px) {
+      .nav-links a:not(.btn) { display: none; }
+      .hero { padding-top: 3rem; }
+      .hero h1 { max-width: none; }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .canvas-row {
+        animation: drift 48s linear infinite;
+      }
+      .canvas-scroller:hover .canvas-row,
+      .canvas-scroller:focus-within .canvas-row {
+        animation-play-state: paused;
+      }
+      @keyframes drift {
+        from { transform: translateX(0); }
+        to { transform: translateX(-50%); }
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="StoreShot home">
+        <img src="assets/icon.png" alt="" width="28" height="28" />
+        StoreShot
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#start">Quick start</a>
+        <a class="btn btn-ghost" href="https://github.com/stackwares/storeshot-electron" rel="noopener">GitHub</a>
+        <a class="btn btn-primary" href="https://github.com/stackwares/storeshot-electron#quick-start" rel="noopener">Get started</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="wrap">
+        <div class="eyebrow">Open source · Electron + Next.js</div>
+        <h1>App Store screenshots, designed on a <em>connected canvas</em></h1>
+        <p class="hero-lead">
+          StoreShot is a desktop &amp; web editor for App Store and Google Play marketing
+          screenshots — layouts, pixel-exact device frames, locales, AI translation,
+          and one-click store-ready export.
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="https://github.com/stackwares/storeshot-electron" rel="noopener">
+            View on GitHub
+          </a>
+          <a class="btn btn-ghost" href="#start">Run it locally</a>
+        </div>
+        <div class="badges" aria-label="Project facts">
+          <span>macOS + web</span>
+          <span>MIT license</span>
+          <span>Local-only by design</span>
+          <span>MCP for Claude &amp; agents</span>
+        </div>
+      </div>
+
+      <div class="canvas-band" aria-label="Connected canvas preview">
+        <div class="canvas-ruler" aria-hidden="true">
+          <span>01 — Screen</span>
+          <span>02 — Hey</span>
+          <span>03 — Hello</span>
+          <span>04 — Analytics</span>
+          <span>05 — Themes</span>
+        </div>
+        <div class="canvas-scroller" tabindex="0" aria-label="Scrollable canvas of marketing screens">
+          <div class="canvas-row">
+            <!-- set A -->
+            <article class="screen-card">
+              <span class="chip">01 — Screen</span>
+              <div class="phone">
+                <div class="phone-screen mesh-mint">
+                  <div class="label">Link in bio</div>
+                  <h3>All your links.<br />A bigger you.</h3>
+                  <p class="sub">Create a beautiful link-in-bio and grow — all in one place.</p>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <article class="screen-card selected">
+              <span class="chip">02 — Hey</span>
+              <div class="phone">
+                <div class="phone-screen mesh-butter">
+                  <div class="label">Link in bio</div>
+                  <h3>All your links in one beautiful page</h3>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <article class="screen-card">
+              <span class="chip">03 — Hello</span>
+              <div class="phone">
+                <div class="phone-screen mesh-lilac">
+                  <div class="label">1 page for all</div>
+                  <h3>Publish your site in seconds</h3>
+                  <p class="sub">Themes, QR sharing, lead capture — built in.</p>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <article class="screen-card">
+              <span class="chip">04 — Analytics</span>
+              <div class="phone">
+                <div class="phone-screen mesh-sky">
+                  <div class="label">Insights</div>
+                  <h3>Know what clicks</h3>
+                  <p class="sub">Track visits, sources, and top links.</p>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <article class="screen-card">
+              <span class="chip">05 — Themes</span>
+              <div class="phone">
+                <div class="phone-screen mesh-rose">
+                  <div class="label">Design</div>
+                  <h3>A bio page that’s truly yours</h3>
+                  <p class="sub">Pastel mesh backgrounds, device frames, captions.</p>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <!-- duplicate for seamless loop -->
+            <article class="screen-card" aria-hidden="true">
+              <span class="chip">01 — Screen</span>
+              <div class="phone">
+                <div class="phone-screen mesh-mint">
+                  <div class="label">Link in bio</div>
+                  <h3>All your links.<br />A bigger you.</h3>
+                  <p class="sub">Create a beautiful link-in-bio and grow — all in one place.</p>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <article class="screen-card selected" aria-hidden="true">
+              <span class="chip">02 — Hey</span>
+              <div class="phone">
+                <div class="phone-screen mesh-butter">
+                  <div class="label">Link in bio</div>
+                  <h3>All your links in one beautiful page</h3>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <article class="screen-card" aria-hidden="true">
+              <span class="chip">03 — Hello</span>
+              <div class="phone">
+                <div class="phone-screen mesh-lilac">
+                  <div class="label">1 page for all</div>
+                  <h3>Publish your site in seconds</h3>
+                  <p class="sub">Themes, QR sharing, lead capture — built in.</p>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <article class="screen-card" aria-hidden="true">
+              <span class="chip">04 — Analytics</span>
+              <div class="phone">
+                <div class="phone-screen mesh-sky">
+                  <div class="label">Insights</div>
+                  <h3>Know what clicks</h3>
+                  <p class="sub">Track visits, sources, and top links.</p>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+            <article class="screen-card" aria-hidden="true">
+              <span class="chip">05 — Themes</span>
+              <div class="phone">
+                <div class="phone-screen mesh-rose">
+                  <div class="label">Design</div>
+                  <h3>A bio page that’s truly yours</h3>
+                  <p class="sub">Pastel mesh backgrounds, device frames, captions.</p>
+                  <div class="mini-device"><div class="ui-bar"></div><div class="ui-block"></div></div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="product wrap">
+      <div class="product-frame">
+        <div class="product-chrome" aria-hidden="true">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span>StoreShot — connected canvas editor</span>
+        </div>
+        <img
+          src="assets/editor.webp"
+          width="1957"
+          height="1528"
+          alt="StoreShot editor showing a horizontal canvas of App Store marketing screens with layers, device frames, and export controls"
+        />
+      </div>
+      <p class="product-caption">One canvas. Screens that can straddle boundaries and export as exact split crops.</p>
+    </section>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Built for store-ready decks, not slide decks</h2>
+          <p>Everything you need to ship a complete App Store Connect / Play Console screenshot set.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="icon icon-mint" aria-hidden="true">▣</div>
+            <h3>Connected canvas editor</h3>
+            <p>Every screen sits on one horizontal canvas. Phones, captions, and elements can straddle boundaries and export as exact split crops. Isolated mode keeps screens self-contained.</p>
+          </article>
+          <article class="card">
+            <div class="icon icon-blue" aria-hidden="true">▭</div>
+            <h3>Pixel-exact device frames</h3>
+            <p>iPhone 6.9" and iPad 13" vector frames with true screen aspects — screenshots render edge-to-edge, not stretched.</p>
+          </article>
+          <article class="card">
+            <div class="icon icon-butter" aria-hidden="true">文</div>
+            <h3>Locales done right</h3>
+            <p>Per-store folder codes (Apple vs Google Play), Fastlane / Standard / Flat export layouts, gap-free screen numbering.</p>
+          </article>
+          <article class="card">
+            <div class="icon icon-lilac" aria-hidden="true">AI</div>
+            <h3>AI translation</h3>
+            <p>Bring your own OpenRouter-compatible key. Translate one screen, one locale, or every locale at once — 5-way concurrent with live status.</p>
+          </article>
+          <article class="card">
+            <div class="icon icon-sky" aria-hidden="true">⇩</div>
+            <h3>One-click export</h3>
+            <p>Bulk PNG bundles at store dimensions with automatic retries and verified-complete downloads.</p>
+          </article>
+          <article class="card">
+            <div class="icon icon-paper" aria-hidden="true">{ }</div>
+            <h3>Git-trackable + MCP</h3>
+            <p>Project JSON lives in your workspace — commit it and resume anywhere. Drive the editor from Claude or agents over stdio MCP.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section band-light" id="start">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Quick start</h2>
+          <p>Run the web editor on any platform, or build the native macOS shell.</p>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="num">01 — WEB</div>
+            <h3>Any platform</h3>
+            <p>Clone the repo, then <code>bun install</code> and <code>bun dev</code> → open <code>http://localhost:3000</code>.</p>
+          </div>
+          <div class="step">
+            <div class="num">02 — MACOS</div>
+            <h3>Native app</h3>
+            <p><code>bun install</code> · <code>bun run build</code> · <code>bun run dist:mac</code> → StoreShot.dmg</p>
+          </div>
+          <div class="step">
+            <div class="num">03 — SHELL</div>
+            <h3>Electron + dev server</h3>
+            <p>Run <code>bun dev</code> in one terminal and <code>bun run electron:dev</code> in another.</p>
+          </div>
+        </div>
+        <pre class="codeblock" tabindex="0"><code><span class="cm"># web editor</span>
+<span class="cmd">git clone</span> https://github.com/stackwares/storeshot-electron.git
+<span class="cmd">cd</span> storeshot-electron
+<span class="cmd">bun install</span>
+<span class="cmd">bun dev</span>          <span class="cm"># http://localhost:3000</span>
+
+<span class="cm"># macOS package</span>
+<span class="cmd">bun run dist:mac</span> <span class="cm"># → StoreShot.dmg</span></code></pre>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="note">
+          <span class="note-tag">Security</span>
+          <div>
+            <p>
+              <strong>Local-only tool, document-only by design.</strong>
+              The <code style="font-family:var(--mono);font-size:0.9em">/api/*</code> endpoints accept any absolute workspace path with no authentication —
+              do not expose the server beyond localhost, and do not run it for multiple users.
+              Translation API keys stay in your browser and go only to your provider.
+              See <a href="https://github.com/stackwares/storeshot-electron/blob/main/SECURITY.md" style="color:var(--mint)">SECURITY.md</a> for the full policy.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <p>
+        Built by <a href="https://github.com/stackwares" rel="noopener">Stackwares</a>
+        — founded by <a href="https://bio.nexl.ink/oliverbytes" rel="noopener">Oliver Martinez</a>.
+      </p>
+      <p>
+        MIT © 2026 ·
+        <a href="https://github.com/stackwares/storeshot-electron" rel="noopener">Source</a>
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
