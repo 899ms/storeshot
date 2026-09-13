@@ -1,4 +1,38 @@
-<!DOCTYPE html>
+#!/usr/bin/env node
+/**
+ * Build a static GitHub Pages site that mirrors the repo README.
+ * Output: _site/index.html (plus rewritten asset URLs to raw.githubusercontent.com).
+ */
+import { mkdir, writeFile, readFile } from "node:fs/promises";
+import path from "node:path";
+
+const repo = process.env.GITHUB_REPOSITORY || "stackwares/storeshot-electron";
+const branch = process.env.GITHUB_REF_NAME && process.env.GITHUB_EVENT_NAME === "push"
+  ? process.env.GITHUB_REF_NAME
+  : "main";
+const token = process.env.GITHUB_TOKEN;
+const outDir = path.resolve(process.env.OUT_DIR || "_site");
+
+const apiUrl = `https://api.github.com/repos/${repo}/readme`;
+const headers = {
+  Accept: "application/vnd.github.html+json",
+  "X-GitHub-Api-Version": "2022-11-28",
+};
+if (token) headers.Authorization = `Bearer ${token}`;
+
+const res = await fetch(apiUrl, { headers });
+if (!res.ok) {
+  throw new Error(`GitHub README fetch failed: ${res.status} ${await res.text()}`);
+}
+
+let html = await res.text();
+const rawBase = `https://raw.githubusercontent.com/${repo}/${branch}/`;
+
+html = html
+  .replace(/src="(?!(?:https?:)?\/\/)([^"]+)"/g, (_, src) => `src="${rawBase}${src.replace(/^\.?\//, "")}"`)
+  .replace(/href="(?!(?:https?:|#|mailto:|\/\/)[^"]*)\.?\/([^"]+\.(?:png|jpe?g|gif|webp|svg))"/gi, (_, p) => `href="${rawBase}${p}"`);
+
+const page = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -115,63 +149,26 @@
       color: var(--muted);
       border-left: 0.25em solid var(--border);
     }
-    .error { color: #d1242f; }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <a href="https://github.com/stackwares/storeshot-electron">stackwares/storeshot-electron</a>
-    <a class="muted" href="https://github.com/stackwares/storeshot-electron#readme">View on GitHub</a>
+    <a href="https://github.com/${repo}">${repo}</a>
+    <a class="muted" href="https://github.com/${repo}#readme">View on GitHub</a>
   </header>
   <main>
-    <p class="status" id="status">Loading README…</p>
-    <article class="markdown-body" id="readme" aria-live="polite"></article>
+    <p class="status">
+      Built from <a href="https://github.com/${repo}/blob/${branch}/README.md">README.md</a>
+      on <code>${branch}</code>.
+    </p>
+    <article class="markdown-body">
+${html}
+    </article>
   </main>
-  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-  <script>
-    (function () {
-      var owner = "stackwares";
-      var repo = "storeshot-electron";
-      var branch = "main";
-      var readmeUrl = "https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/README.md";
-      var blobBase = "https://github.com/" + owner + "/" + repo + "/blob/" + branch + "/";
-      var rawBase = "https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/";
-      var statusEl = document.getElementById("status");
-      var root = document.getElementById("readme");
-
-      function absolutize(md) {
-        return md
-          .replace(/!\[([^\]]*)\]\((?!https?:|data:)([^)\s]+)\)/g, function (_, alt, path) {
-            return "![" + alt + "](" + rawBase + path.replace(/^\.\//, "") + ")";
-          })
-          .replace(/\[([^\]]+)\]\((?!https?:|mailto:|#)([^)\s]+)\)/g, function (_, text, path) {
-            if (/^public\//.test(path) || /\.(png|jpe?g|gif|webp|svg)$/i.test(path)) {
-              return "[" + text + "](" + rawBase + path.replace(/^\.\//, "") + ")";
-            }
-            return "[" + text + "](" + blobBase + path.replace(/^\.\//, "") + ")";
-          });
-      }
-
-      fetch(readmeUrl, { cache: "no-cache" })
-        .then(function (res) {
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          return res.text();
-        })
-        .then(function (md) {
-          root.innerHTML = marked.parse(absolutize(md));
-          root.querySelectorAll("a").forEach(function (a) {
-            a.setAttribute("target", "_blank");
-            a.setAttribute("rel", "noopener noreferrer");
-          });
-          statusEl.innerHTML =
-            'Live mirror of <a href="https://github.com/' + owner + "/" + repo + '/blob/' + branch + '/README.md">README.md</a> on <code>' + branch + "</code>.";
-        })
-        .catch(function (err) {
-          statusEl.innerHTML =
-            'Could not load README (' + err.message + "). " +
-            '<a href="https://github.com/' + owner + "/" + repo + "#readme\">Open it on GitHub</a>.';
-        });
-    })();
-  </script>
 </body>
 </html>
+`;
+
+await mkdir(outDir, { recursive: true });
+await writeFile(path.join(outDir, "index.html"), page, "utf8");
+console.log(`Wrote ${path.join(outDir, "index.html")} (${page.length} bytes) from ${apiUrl}`);

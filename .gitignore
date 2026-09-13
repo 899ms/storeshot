@@ -15,3 +15,4 @@ coverage/
 tasks/
 agent/
 skills-lock.json
+_site/
