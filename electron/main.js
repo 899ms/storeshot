@@ -41,13 +41,21 @@ const IS_MAC = process.platform === "darwin";
 const FLUSH_TIMEOUT_MS = 3000;
 
 function standaloneServerEntry() {
-  // Unpacked dev runs from the repo; packaged runs from the asar archive.
-  // utilityProcess.fork cannot reliably boot a script from inside app.asar,
-  // so the standalone server is listed under asarUnpack in package.json and
-  // lives in app.asar.unpacked once packaged — prefer whichever exists.
-  const packed = path.join(__dirname, "..", ".next", "standalone", "server.js");
-  if (fs.existsSync(packed)) return packed;
-  return packed.replace("app.asar", "app.asar.unpacked");
+  // Packaged: extraResources copies .next/standalone next to the binary so
+  // utilityProcess.fork never has to read from inside app.asar (universal
+  // builds also cannot merge a huge unpacked standalone ASAR reliably).
+  if (app.isPackaged) {
+    const viaResources = path.join(process.resourcesPath, ".next", "standalone", "server.js");
+    if (fs.existsSync(viaResources)) return viaResources;
+    const viaUnpacked = path.join(__dirname, "..", ".next", "standalone", "server.js").replace(
+      "app.asar",
+      "app.asar.unpacked",
+    );
+    if (fs.existsSync(viaUnpacked)) return viaUnpacked;
+    return viaResources;
+  }
+  // Unpacked dev run from the repo.
+  return path.join(__dirname, "..", ".next", "standalone", "server.js");
 }
 
 async function findFreePort() {

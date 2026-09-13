@@ -159,7 +159,7 @@ jobs:
           # Fail rather than silently shipping an unsigned build
           CSC_IDENTITY_AUTO_DISCOVERY: "true"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bun run dist:mac:universal
+        run: bun run dist:mac
 
       - name: Verify Gatekeeper acceptance
         run: |

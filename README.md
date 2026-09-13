@@ -51,7 +51,7 @@ bun dev        # http://localhost:3000
 
 ```bash
 bun install
-bun run dist:mac:universal   # → dist/StoreShot-*.dmg
+bun run dist:mac             # → dist/StoreShot-*-arm64.dmg
 ```
 
 Tagged releases are built and notarized in CI — see
